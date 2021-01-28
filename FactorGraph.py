@@ -234,6 +234,12 @@ class Graph:
         for checknode in self.__CheckNodes:
             checknode.reset()
 
+    def getchecklist(self):
+        return self.__CheckNodeIndices
+
+    def getcheckcount(self):
+        return self.__CheckCount
+
     def getvarlist(self):
         return self.__VarNodeIndices
 
@@ -254,6 +260,9 @@ class Graph:
 
     def getsparseseclength(self):
         return self.__SparseSecLength
+
+    def getcheckneighbors(self, checknodeid):
+        return self.__CheckNodes[checknodeid].getneighbors()
 
     def getobservation(self, varnodeid):
         if varnodeid == 0:
