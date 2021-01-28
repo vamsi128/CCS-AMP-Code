@@ -284,25 +284,65 @@ class Graph:
             print('Check Node ID ' + str(self.__CheckNodes[checknode].getid()), end=": ")
             print(self.__CheckNodes[checknode].getneighbors())
 
-    def updatechecks(self):
-        for checknode in self.__CheckNodes:
-            varneighborlist = checknode.getneighbors()
-            # print('Updating State of Check ' + str(checknode.getid()), end=' ')
-            # print('Using Variable Neighbors ' + str(varneighborlist))
-            for varneighbor in varneighborlist:
-                # print('\t Check Neighbor: ' + str(varneighbor))
-                # print('\t Others: ' + str([member for member in varneighborlist if member is not varneighbor]))
-                checknode.setmessagefromvar(varneighbor, self.__VarNodes[varneighbor].getmessagetocheck(checknode.getid()))
+    def updatechecks(self,checknodelist=None):
+        if checknodelist is None:
+            for checknode in self.__CheckNodes:
+                varneighborlist = checknode.getneighbors()
+                # print('Updating State of Check ' + str(checknode.getid()), end=' ')
+                # print('Using Variable Neighbors ' + str(varneighborlist))
+                for varneighbor in varneighborlist:
+                    # print('\t Check Neighbor: ' + str(varneighbor))
+                    # print('\t Others: ' + str([member for member in varneighborlist if member is not varneighbor]))
+                    checknode.setmessagefromvar(varneighbor, self.__VarNodes[varneighbor].getmessagetocheck(checknode.getid()))
+            return
+        else:
+            varneighborsaggregate = set()
+            for checknodeid in checknodelist:
+                try:
+                    checknode = self.__CheckNodes[checknodeid]
+                except IndexError as e:
+                    print('Check node ID ' + str(checknodeid) + ' is not in ' + str(checknodelist))
+                    print('IndexError: ' + str(e))
+                    break
+                varneighborlist = checknode.getneighbors()
+                varneighborsaggregate.update(varneighborlist)
+                # print('Updating State of Check ' + str(checknode.getid()), end=' ')
+                # print('Using Variable Neighbors ' + str(varneighborlist))
+                for varneighbor in varneighborlist:
+                    # print('\t Check Neighbor: ' + str(varneighbor))
+                    # print('\t Others: ' + str([member for member in varneighborlist if member is not varneighbor]))
+                    checknode.setmessagefromvar(varneighbor, self.__VarNodes[varneighbor].getmessagetocheck(checknode.getid()))
+            return list(varneighborsaggregate)
 
-    def updatevars(self):
-        for variablenode in self.__VarNodes:
-            checkneighborlist = variablenode.getneighbors()
-            # print('Updating State of Variable ' + str(variablenode.getid()), end=' ')
-            # print('Using Check Neighbors ' + str(checkneighborlist))
-            for checkneighbor in checkneighborlist:
-                # print('\t Variable Neighbor: ' + str(neighbor))
-                # print('\t Others: ' + str([member for member in checkneighborlist if member is not neighbor]))
-                variablenode.setmessagefromcheck(checkneighbor, self.__CheckNodes[checkneighbor].getmessagetovar(variablenode.getid()))
+    def updatevars(self,varnodelist=None):
+        if varnodelist is None:
+            for varnode in self.__VarNodes:
+                checkneighborlist = varnode.getneighbors()
+                # print('Updating State of Variable ' + str(varnode.getid()), end=' ')
+                # print('Using Check Neighbors ' + str(checkneighborlist))
+                for checkneighbor in checkneighborlist:
+                    # print('\t Variable Neighbor: ' + str(neighbor))
+                    # print('\t Others: ' + str([member for member in checkneighborlist if member is not neighbor]))
+                    varnode.setmessagefromcheck(checkneighbor, self.__CheckNodes[checkneighbor].getmessagetovar(varnode.getid()))
+            return
+        else:
+            checkneighborsaggregate = set()
+            for varnodeid in varnodelist:
+                try:
+                    varnode = self.__VarNodes[varnodeid]
+                except IndexError as e:
+                    print('Check node ID ' + str(varnodeid) + ' is not in ' + str(varnodelist))
+                    print('IndexError: ' + str(e))
+                    break
+                checkneighborlist = varnode.getneighbors()
+                checkneighborsaggregate.update(checkneighborlist)
+                # print('Updating State of Variable ' + str(varnode.getid()), end=' ')
+                # print('Using Check Neighbors ' + str(checkneighborlist))
+                for checkneighbor in checkneighborlist:
+                    # print('\t Variable Neighbor: ' + str(neighbor))
+                    # print('\t Others: ' + str([member for member in checkneighborlist if member is not neighbor]))
+                    varnode.setmessagefromcheck(checkneighbor, self.__CheckNodes[checkneighbor].getmessagetovar(varnode.getid()))
+            return list(checkneighborsaggregate)
 
     def getcodeword(self):
         codeword = np.empty((self.__VarCount, self.__SparseSecLength), dtype=int)
@@ -340,9 +380,19 @@ class Graph:
                 # print('Variable node ' + str(varnodeid), end=' ')
                 # print(' -- Observation changed to: ' + str(np.argmax(self.getobservation(varnodeid))))
 
-            for iter in range(8):
-                self.updatechecks()
+            varnodesvisited = set(self.__VarNodeIndices)
+            checknodesvisited = set([])
+            varnodes2visitnext = set(varnodesvisited)
+            checknodes2visitnext = set([])
+            for iter in range(3): # Need to change this
+                self.updatechecks()  # Update Check first
                 self.updatevars()
+                # checknodes2visitnext = set(self.updatevars(varnodes2visitnext)) - checknodesvisited
+                # checknodesvisited = checknodesvisited - checknodes2visitnext
+                # # print(self.updatechecks(checknodes2visitnext))
+                # varnodes2visitnext = set(self.updatechecks(checknodes2visitnext))- varnodesvisited
+                # # print(self.updatevars(varnodes2visitnext))
+                # varnodesvisited = varnodesvisited | varnodes2visitnext
 
             return self.getcodeword()
         else:
