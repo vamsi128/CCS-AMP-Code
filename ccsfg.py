@@ -9,342 +9,342 @@ Thus, the structures of @class VariableNode and @class CheckNode assume that mes
 import numpy as np
 
 
-class VariableNode:
+class GenericNode:
+    """
+    Class @class GenericNode creates a single generic node within graph.
+    """
+
+    def __init__(self, nodeid, neighbors=None):
+        """
+        Initialize node of type @class GenericNode.
+        :param nodeid: Identifier corresponding to self
+        :param neighbors: List of identifiers corresponding to neighbors of self
+        """
+
+        # Identifier of self
+        self.__ID = nodeid
+        # List of identifiers corresponding to neighbors within graph
+        self.__Neighbors = []
+        # Dictionary of messages from neighbors acces with their identifiers
+        # Some neighbors may not have set messages
+        # Therefore self.__Neighbors may not match self.__MessagesFromNeighbors.keys()
+        self.__MessagesFromNeighbors = dict()
+
+        # Argument @var neighbors (optional) if specified in list form, then neighbors are added
+        if neighbors is not None:
+            self.addneighbors(neighbors)
+
+    def getid(self):
+        return self.__ID
+
+    def getneighbors(self):
+        """
+        Retrieve node identifiers contained in list of neighbors.
+        """
+        return self.__Neighbors
+
+    def addneighbor(self, neighborid, message=None):
+        """
+        Add neighbor @var neighborid to list of neighbors.
+        Add message @var message (optional) to dictionary of messages from neighbors.
+        :param neighborid: Identifier of neighbor to be added
+        :param message: Message associated with @var neighborid
+        """
+        if neighborid in self.__Neighbors:
+            print('Node ID ' + str(neighborid) + 'is already a neighbor.')
+        else:
+            if message is None:
+                self.__Neighbors.append(neighborid)
+            else:
+                self.__MessagesFromNeighbors.update({neighborid: message})
+                self.__Neighbors.append(neighborid)
+
+    def addneighbors(self, neighborlist):
+        """
+        Add neighbors whose identifiers are contained in @var neighborlist to list of neighbors.
+        :param neighborlist: List of node identifiers to be added as neighbors
+        """
+        for neighborid in neighborlist:
+            self.addneighbor(neighborid)
+
+    def getstate(self, neighborid):
+        """
+        Output message corresponding to @var nodeid.
+        :param neighborid:
+        :return:
+        """
+        if neighborid in self.__MessagesFromNeighbors.keys():
+            return self.__MessagesFromNeighbors[neighborid]
+        else:
+            return None
+
+    def getstates(self):
+        """
+        Output @var self.__MessagesFromNeighbors in dictionary format.
+        :return: Dictionary of messages from neighbors
+        """
+        return self.__MessagesFromNeighbors
+
+    def setstate(self, neighborid, message):
+        """
+        set message for neighbor with identifier @var neighborid.
+        :param neighborid: Identifier of origin
+        :param message: Message corresponding to identifier @var neighborid
+        """
+        if neighborid in self.__Neighbors:
+            self.__MessagesFromNeighbors[neighborid] = message
+        else:
+            print('Check node ID ' + str(neighborid) + ' is not a neighbor.')
+
+
+class VariableNodeFFT(GenericNode):
     """
     Class @class VariableNode creates a single variable node within bipartite factor graph.
     """
 
     def __init__(self, varnodeid, messagelength, neighbors=None):
         """
-        Initialization of variable node of type @class VariableNode.
+        Initialize variable node of type @class VariableNode.
         :param varnodeid: Unique identifier for variable node
         :param messagelength: Length of incoming and outgoing messages
         :param neighbors: Neighbors of node @var varnodeid in bipartite graph
         """
 
+        super().__init__(varnodeid, neighbors)
         # Unique identifier for variable node
         self.__ID = varnodeid
         # Length of messages
         self.__MessageLength = messagelength
-        # Check node neighbors within bipartite graph
+
         # Check node identifier 0 corresponds to trivial check node associated with local observation
-        self.__CheckNeighbors = [0]
-        # List of messages from check node neighbors
         # Initialize messages from (trivial) check node 0 to uninformative measure (all ones)
-        self.__MessagesFromChecks = [np.ones(self.__MessageLength, dtype=float)]
-
-        # Argument @var neighbors is optional; if specified in list form, then neighbors are added
-        if neighbors is not None:
-            self.addneighbors(neighbors)
-
-    def getid(self):
-        return self.__ID
+        self.addneighbor(0, message=np.ones(self.__MessageLength, dtype=float))
 
     def reset(self):
         """
-        Reset the state of the variable node to uninformative measure (all ones)
+        Reset states of every variable node to uninformative measures (all ones)
         """
-        for checkneighborid in range(len(self.__CheckNeighbors)):
-            self.__MessagesFromChecks[checkneighborid] = np.ones(self.__MessageLength, dtype=float)
+        for neighborid in self.getneighbors():
+            self.setstate(neighborid, np.ones(self.__MessageLength, dtype=float))
+
+    def getneighbors(self):
+        """
+        Retrieve node identifiers contained in list of neighbors.
+        """
+        return [neighbor for neighbor in super().getneighbors() if neighbor != 0]
 
     def getobservation(self):
         """
         Retrieve status of local observation (checkneighborid 0)
         :return: Measure of local observation
         """
-        return self.__MessagesFromChecks[0]
+        return self.getstate(0)
 
     def setobservation(self, measure):
         """
         Set status of local observation @var self.__CheckNeighbors[0] to @param measure.
         :param measure: Measure of local observation
         """
-        self.__MessagesFromChecks[0] = measure
-
-    def getneighbors(self):
-        """
-        Retrieve check node identifiers in list of neighbors.
-        List item 0 corresponds to trivial check node associated with local observation.
-        It should not bre returned.
-        """
-        return self.__CheckNeighbors[1:]
-
-    def addneighbor(self, checkneighborid):
-        """
-        Add a single check neighbor @var checkneighborid to list of neighbors.
-        :param checkneighborid: Unique identifier for check node to be added
-        """
-        if checkneighborid in self.__CheckNeighbors:
-            print('Check node ID ' + str(checkneighborid) + 'is already a neighbor.')
-        else:
-            self.__CheckNeighbors.append(checkneighborid)
-            self.__MessagesFromChecks.append(np.ones(self.__MessageLength, dtype=float))
-
-    def addneighbors(self, checkneighborlist):
-        """
-        Add check node neighbors contained in @var checkneighborlist to list of neighbors.
-        :param checkneighborlist: List of check node identifiers to be added as neighbors
-        """
-        for checkneighborid in checkneighborlist:
-            self.addneighbor(checkneighborid)
+        self.setstate(0, measure)
 
     def setmessagefromcheck(self, checkneighborid, message):
         """
-        Incoming message from check node neighbor @var checkneighbor to variable node @var self.__ID
+        Incoming message from check node neighbor @var checkneighbor to variable node self.
         :param checkneighborid: Check node identifier of origin
         :param message: Incoming belief vector
         """
-        if checkneighborid in self.__CheckNeighbors:
-            neighborindex = self.__CheckNeighbors.index(checkneighborid)
-            self.__MessagesFromChecks[neighborindex] = message
-            # print('\t Variable ' + str(self.__ID) + ': Set message from check ' + str(checkneighbor))
-            # print('\t New message: ' + str(message))
-        else:
-            print('Check node ID ' + str(checkneighborid) + ' is not a neighbor.')
+        self.setstate(checkneighborid, message)
 
-    def getmessagetocheck(self, checkneighborid):
+    def getmessagetocheck(self, checkneighborid=None):
         """
-        Outgoing message from variable node @var self.__ID to check node @var checkneighborid
+        Outgoing message from variable node self to check node @var checkneighborid
+        Exclude message corresponding to @var checkneighborid (optional).
+        If no destination is specified, return product of all measures.
         :param checkneighborid: Check node identifier of destination
         :return: Outgoing belief vector
         """
-        outgoing = np.ones(self.__MessageLength, dtype=float)
-        if checkneighborid in self.__CheckNeighbors:
-            for other in [member for member in self.__CheckNeighbors if member is not checkneighborid]:
-                otherindex = self.__CheckNeighbors.index(other)
-                outgoing = np.prod((outgoing, self.__MessagesFromChecks[otherindex]), axis=0)
-            # print('Variable ' + str(self.__ID) + ': Sending message to check ' + str(checkneighbor))
-            # print('\t Outgoing message: ' + str(outgoing))
+        dictionary = self.getstates()
+        if checkneighborid is None:
+            states = list(dictionary.values())
+        elif checkneighborid in dictionary:
+            states = [dictionary[key] for key in dictionary if key is not checkneighborid]
         else:
-            print('Check node ID ' + str(checkneighborid) + ' is not a neighbor.')
-        try:
-            normalization = (1 / np.linalg.norm(outgoing, ord=1))
-        except ZeroDivisionError as e:
-            print(e)
-            normalization = 0
-        if np.isfinite(normalization):
-            return normalization * outgoing
+            print('Desination check node ID ' + str(checkneighborid) + ' is not a neighbor.')
+            return None
+
+        if np.isscalar(states):
+            return states
         else:
-            return np.zeros(self.__MessageLength, dtype=float)
+            states = np.array(states)
+            if states.ndim == 1:
+                return states
+            elif states.ndim == 2:
+                try:
+                    return np.prod(states, axis=0)
+                except ValueError as e:
+                    print(e)
+            else:
+                raise RuntimeError('Dimenstion: states.ndim = ' + str(np.array(states).ndim) + ' is not allowed.')
 
     def getestimate(self):
         """
-        Retrieve distribution of beliefs associated variable node @var self.__ID.
-        :return: Local belief vector
+        Retrieve distribution of beliefs associated with self
+        :return: Local belief distribution
         """
-        estimate = np.ones(self.__MessageLength, dtype=float)
-        for checkindex in range(len(self.__CheckNeighbors)):  # self.__CheckNeighbors
-            estimate = np.prod((estimate, self.__MessagesFromChecks[checkindex]), axis=0)
-        try:
-            normalization = (1 / np.linalg.norm(estimate, ord=1))
-        except ZeroDivisionError as e:
-            print(e)
-            normalization = 0
-        if np.isfinite(normalization):
-            return normalization * estimate
+        measure = self.getmessagetocheck()
+        if measure is None:
+            return measure
+        elif np.isscalar(measure):
+            return measure
         else:
-            return np.zeros(self.__MessageLength, dtype=float)
+            try:
+                return measure / np.linalg.norm(measure, ord=1)
+            except ZeroDivisionError:
+                return measure
 
 
-class CheckNode:
+class CheckNodeFFT(GenericNode):
     """
-    Class @class CheckNode creates a single check node within the bipartite factor graph.
+    Class @class CheckNode creates a single check node within bipartite factor graph.
     """
 
     def __init__(self, checknodeid, messagelength, neighbors=None):
         """
-        Initialization of check node of type @class CheckNode.
+        Initialize check node of type @class CheckNode.
         :param checknodeid: Unique identifier for check node
-        :param messagelength: Length of incoming an outgoing messages
+        :param messagelength: Length of incoming and outgoing messages
         :param neighbors: Neighbors of node @var checknodeid in bipartite graph
         """
 
+        super().__init__(checknodeid, neighbors)
         # Unique identifier for check node
         self.__ID = checknodeid
         # Length of messages
         self.__MessageLength = messagelength
-        # Variable node neighbors within bipartite graph
-        self.__VarNeighbors = []
-        # List of messages from variable node neighbors stored in FFT format
-        self.__MessagesFromVarFFT = []
-
-        # Argument @var neighbors is optional; if specified in list form, then neighbors are added
-        if neighbors is not None:
-            self.addneighbors(neighbors)
-
-    def getid(self):
-        return self.__ID
 
     def reset(self):
         """
-        Reset the state of the check node to uninformative measure (FFT of all ones)
+        Reset states of every check node to uninformative measures (FFT of all ones)
         """
-        # uninformative = np.fft.fft(np.ones(self.__MessageLength, dtype=float)).real
+        # uninformative = np.fft.rfft(np.ones(self.__MessageLength, dtype=float))
         uninformative = np.zeros(self.__MessageLength, dtype=float)
         uninformative[0] = self.__MessageLength
-        for neighbor in range(len(self.__VarNeighbors)):
-            self.__MessagesFromVarFFT[neighbor] = uninformative
-
-    def getneighbors(self):
-        """
-        Retrieve variable node identifiers in list of neighbors.
-        """
-        return self.__VarNeighbors
-
-    def addneighbor(self, varneighborid):
-        """
-        Add a single variable neighbor @var varneighborid to list of neighbors.
-        :param varneighborid: Unique identifier for check node to be added
-        """
-        if varneighborid in self.__VarNeighbors:
-            print('Variable node ID ' + str(varneighborid) + 'is already a neighbor.')
-        else:
-            self.__VarNeighbors.append(varneighborid)
-            # uninformative = np.fft.fft(np.ones(self.__MessageLength, dtype=float)).real
-            uninformative = np.zeros(self.__MessageLength, dtype=float)
-            uninformative[0] = self.__MessageLength
-            self.__MessagesFromVarFFT.append(np.fft.fft(np.ones(self.__MessageLength, dtype=float)))
-
-    def addneighbors(self, varneighborlist):
-        """
-        Add variable node neighbors contained in @var varneighborlist to list of neighbors.
-        :param varneighborlist: List of variable node identifiers to be added as neighbors
-        """
-        for varneighborid in varneighborlist:
-            self.addneighbor(varneighborid)
+        for neighborid in self.getneighbors():
+            self.setstate(neighborid, uninformative)
 
     def setmessagefromvar(self, varneighborid, message):
-        if varneighborid in self.__VarNeighbors:
-            neighborindex = self.__VarNeighbors.index(varneighborid)
-            # Message from variable node @var varneighborid stored in FFT format
-            self.__MessagesFromVarFFT[neighborindex] = np.fft.fft(message)
-            # print('\t Check ' + str(self.__ID) + ': Set message from variable ' + str(varneighborid))
-            # print('\t New message: ' + str(message))
-        else:
-            print('Variable node ID ' + str(varneighborid) + ' is not a neighbor.')
+        """
+        Incoming message from variable node neighbor @var vaneighborid to check node self.
+        :param varneighborid: Variable node identifier of origin
+        :param message: Incoming belief vector
+        """
+        self.setstate(varneighborid, np.fft.rfft(message))
 
     def getmessagetovar(self, varneighborid):
         """
-        Outgoing message from check node @var self.__ID to variable node @var varneighbor
+        Outgoing message from check node self to variable node @var varneighbor
         :param varneighborid: Variable node identifier of destination
         :return: Outgoing belief vector
         """
-        outgoingFFT = np.ones(self.__MessageLength, dtype=float)
-        if varneighborid in self.__VarNeighbors:
-            for other in [member for member in self.__VarNeighbors if member is not varneighborid]:
-                otherindex = self.__VarNeighbors.index(other)
-                outgoingFFT = np.prod((outgoingFFT, self.__MessagesFromVarFFT[otherindex]), axis=0)
-            # print('Check ' + str(self.__ID) + ': Sending message to variable ' + str(varneighborid))
-            # print('\t Outgoing message: ' + str(outgoing))
+        dictionary = self.getstates()
+        if varneighborid is None:
+            states = list(dictionary.values())
+        elif varneighborid in dictionary:
+            states = [dictionary[key] for key in dictionary if key is not varneighborid]
         else:
-            print('Variable node ID ' + str(varneighborid) + ' is not a neighbor.')
-        outgoing = np.fft.ifft(outgoingFFT, axis=0).real
+            print('Destination variable node ID ' + str(varneighborid) + ' is not a neighbor.')
+            return None
+        if np.isscalar(states):
+            return states
+        else:
+            states = np.array(states)
+            if states.ndim == 1:
+                outgoing_fft = states
+            elif states.ndim == 2:
+                try:
+                    outgoing_fft = np.prod(states, axis=0)
+                except ValueError as e:
+                    print(e)
+                    return None
+            else:
+                raise RuntimeError('states.ndim = ' + str(np.array(states).ndim) + ' is not allowed.')
+            outgoing = np.fft.irfft(outgoing_fft, axis=0)
         # The outgoing message values should be indexed using the modulo operation.
         # This is implemented by retaining the value at zero and flipping the order of the remaining vector
         # That is, for n > 0, outgoing[-n % m] = np.flip(outgoing[1:])[n]
         outgoing[1:] = np.flip(outgoing[1:])  # This is implementing the required modulo operation
-        try:
-            normalization = (1 / np.linalg.norm(outgoing, ord=1))
-        except ZeroDivisionError as e:
-            print(e)
-            normalization = 0
-        if np.isfinite(normalization):
-            return normalization * outgoing
-        else:
-            return np.zeros(self.__MessageLength, dtype=float)
+        return outgoing
 
 
 class Graph:
     """
-    Class @class Graph creates the entire bipartite factor graph.
+    Class @class Graph creates bipartite factor graph for belief propagation.
     """
 
-    def __init__(self, check2varedges, varcount, infonodeindices, seclength):
+    def __init__(self, check2varedges, seclength):
         """
-        Initialization of graph of type @class Graph.
-        The graph is specified by passing of list of connections, one for every check node.
-        The collection list for a check node contains the variable node identifiers of its neighbors.
-        :param check2varedges: Connections in list of lists format
-        :param varcount: Total number of variable nodes
-        :param infonodeindices: List of information nodes for a systematic code
+        Initialize bipartite graph of type @class Graph.
+        Graph is specified by passing list of connections, one for every check node.
+        The list for every check node contains the variable node identifiers of its neighbors.
+        :param check2varedges: Edges from check nodes to variable nodes in list of lists format
         :param seclength: Length of incoming and outgoing messages
         """
-        # Number of check nodes, excluding dummy check node @var self.__CheckNodes[0]
-        self.__CheckCount = len(check2varedges) - 1
-        self.__CheckNodeIndices = [idx for idx in range(1, self.__CheckCount + 1)]  # IDs start at one.
-        # Number of variable nodes
-        self.__VarCount = varcount
-        self.__VarNodeIndices = [idx for idx in range(1, self.__VarCount + 1)]  # IDs start at one.
-        # Number of bits per section
+        # Number of bits per section.
         self.__SecLength = seclength
-        # Length of index vector for every section
+        # Length of index vector for every section.
         self.__SparseSecLength = 2 ** self.__SecLength
-        # Overall length of state vector
-        self.__CodewordLength = self.__VarCount * self.__SparseSecLength
 
-        # List of unique identifiers for check nodes in the graph.
+        # List of unique identifiers for check nodes in bipartite graph.
         # Identifier @var checknodeid=0 is reserved for the local observation at every variable node.
-        self.__CheckNodeIDs = []
-        # List of check nodes in the bipartite graph, plus placeholder for local observations.
-        # Check node @var self.__CheckNodes[0] is a dummy node and should not have edges.
-        self.__CheckNodes = [CheckNode(0, messagelength=self.__SparseSecLength)]
+        self.__CheckNodeIDs = set()
+        # Dictionary of identifiers and nodes for check nodes in bipartite graph.
+        self.__CheckNodes = dict()
 
-        # List of unique identifiers for variable nodes in the graph.
-        # The implementation assumes this set is of the form [VarCount], not including zero.
-        self.__VarNodeIDs = []  # Collection of variable nodes in graph.
-        # List of variable nodes in the bipartite graph.
-        self.__VarNodes = []
+        # List of unique identifiers for variable nodes in bipartite graph.
+        self.__VarNodeIDs = set()
+        # Dictionary of identifiers and nodes for variable nodes in bipartite graph.
+        self.__VarNodes = dict()
 
-        for varnodeid in [0] + self.__VarNodeIndices:
-            if varnodeid in self.__VarNodeIDs:
-                print('Variable node ID ' + str(varnodeid) + ' is already taken.')
-            else:
-                self.__VarNodeIDs.append(varnodeid)
-                self.__VarNodes.append(VariableNode(varnodeid, messagelength=self.__SparseSecLength))
+        # Check identifier @var checknodeid=0 is reserved for the local observation at every variable node.
+        for idx in range(len(check2varedges)):
+            # Create check node identifier, starting at @var checknodeid = 1.
+            checknodeid = idx + 1
+            self.__CheckNodeIDs.add(checknodeid)
+            # Create check nodes and add them to dictionary @var self.__CheckNodes.
+            self.__CheckNodes.update({checknodeid: CheckNodeFFT(checknodeid, messagelength=self.__SparseSecLength)})
+            # Add edges from check nodes to variable nodes.
+            self.__CheckNodes[checknodeid].addneighbors(check2varedges[idx])
+            # Create set of all variable node identifiers.
+            self.__VarNodeIDs.update(check2varedges[idx])
 
-        for checknodeid in self.__CheckNodeIndices:
-            if checknodeid in self.__CheckNodeIDs:
-                print('Check node ID ' + str(checknodeid) + ' is already taken.')
-            else:
-                self.__CheckNodeIDs.append(checknodeid)
-                self.__CheckNodes.append(CheckNode(checknodeid, messagelength=self.__SparseSecLength))
-                self.__CheckNodes[checknodeid].addneighbors(check2varedges[checknodeid])
+        for varnodeid in self.__VarNodeIDs:
+            # Create variable nodes and add them to dictionary @var self.__VariableNodes.
+            self.__VarNodes[varnodeid] = VariableNodeFFT(varnodeid, messagelength=self.__SparseSecLength)
 
-        for checknode in self.__CheckNodes:
+        for checknode in self.__CheckNodes.values():
             for neighbor in checknode.getneighbors():
+                # Add edges from variable nodes to check nodes.
                 self.__VarNodes[neighbor].addneighbor(checknode.getid())
 
-        self.__InfoNodeIndices = infonodeindices
-        self.__InfoCount = len(self.__InfoNodeIndices)
-        self.__ParityNodeIndices = [member for member in self.__VarNodeIndices if member not in self.__InfoNodeIndices]
-        self.__ParityCount = len(self.__ParityNodeIndices)
-
     def reset(self):
-        for varnode in self.__VarNodes:
+        # Reset states at variable nodes to uniform measures.
+        for varnode in self.__VarNodes.values():
             varnode.reset()
-        for checknode in self.__CheckNodes:
+        # Reset states at check nodes to uninformative measures.
+        for checknode in self.__CheckNodes.values():
             checknode.reset()
 
     def getchecklist(self):
-        return self.__CheckNodeIndices
+        return list(self.__CheckNodes.keys())
 
     def getcheckcount(self):
-        return self.__CheckCount
+        return len(self.__CheckNodes)
 
     def getvarlist(self):
-        return self.__VarNodeIndices
+        return list(self.__VarNodes.keys())
 
     def getvarcount(self):
-        return self.__VarCount
-
-    def getinfolist(self):
-        return self.__InfoNodeIndices
-
-    def getinfocount(self):
-        return self.__InfoCount
-
-    def getparitylist(self):
-        return self.__ParityNodeIndices
+        return len(self.__VarNodes)
 
     def getseclength(self):
         return self.__SecLength
@@ -356,45 +356,49 @@ class Graph:
         return self.__CheckNodes[checknodeid].getneighbors()
 
     def getobservation(self, varnodeid):
-        if varnodeid == 0:
-            print('Variable node 0 is a dummy node.')
-        elif varnodeid in self.__VarNodeIndices:
+        if varnodeid in self.getvarlist():
             return self.__VarNodes[varnodeid].getobservation()
         else:
             print('The retrival did not succeed.')
             print('Variable Node ID: ' + str(varnodeid))
 
     def setobservation(self, varnodeid, measure):
-        if varnodeid == 0:
-            print('Variable node 0 is a dummy node.')
-        elif (len(measure) == self.__SparseSecLength) and (varnodeid in self.__VarNodeIndices):
+        if (len(measure) == self.getsparseseclength()) and (varnodeid in self.getvarlist()):
             self.__VarNodes[varnodeid].setobservation(measure)
         else:
             print('The assignment did not succeed.')
             print('Variable Node ID: ' + str(varnodeid))
-            print('Variable Node Indices: ' + str(self.__VarNodeIndices))
+            print('Variable Node Indices: ' + str(self.getvarlist()))
             print('Length Measure: ' + str(len(measure)))
             print('Length Sparse Section: ' + str(self.__SparseSecLength))
 
     def printgraph(self):
-        for varnode in self.__VarNodeIndices:
-            print('Var Node ID ' + str(self.__VarNodes[varnode].getid()), end=": ")
-            print(self.__VarNodes[varnode].getneighbors())
-        for checknodeid in self.__CheckNodeIndices:
-            print('Check Node ID ' + str(self.__CheckNodes[checknodeid].getid()), end=": ")
+        for varnodeid in self.getvarlist():
+            print('Var Node ID ' + str(varnodeid), end=": ")
+            print(self.__VarNodes[varnodeid].getneighbors())
+        for checknodeid in self.getchecklist():
+            print('Check Node ID ' + str(checknodeid), end=": ")
             print(self.__CheckNodes[checknodeid].getneighbors())
+
+    def printgraphcontent(self):
+        for varnodeid in self.getvarlist():
+            print('Var Node ID ' + str(varnodeid), end=": ")
+            print(self.__VarNodes[varnodeid].getstates())
+        for checknodeid in self.getchecklist():
+            print('Check Node ID ' + str(checknodeid), end=": ")
+            print(self.__CheckNodes[checknodeid].getstates())
 
     def updatechecks(self, checknodelist=None):
         """
-        This method updates the state of the check nodes in @var checknodelist by performing message passing.
+        This method updates states of check nodes in @var checknodelist by performing message passing.
         Every check node in @var checknodelist requests messages from its variable node neighbors.
         The received belief vectors are stored locally.
-        If no list is provided, then all the check nodes in the factor graph are updated.
-        :param checknodelist: List of identifiers for the check nodes to be updated
-        :return: List of identifiers for the variable contacted during the update
+        If no list is provided, then all check nodes in the factor graph are updated.
+        :param checknodelist: List of identifiers for check nodes to be updated
+        :return: List of identifiers for variable node contacted during update
         """
         if checknodelist is None:
-            for checknode in self.__CheckNodes:
+            for checknode in self.__CheckNodes.values():
                 varneighborlist = checknode.getneighbors()
                 # print('Updating State of Check ' + str(checknode.getid()), end=' ')
                 # print('Using Variable Neighbors ' + str(varneighborlist))
@@ -426,23 +430,28 @@ class Graph:
 
     def updatevars(self, varnodelist=None):
         """
-        This method updates the state of the variable nodes in @var varnodelist by performing message passing.
-        Every variable node in @var varnodelist requests messages from its variable node neighbors.
+        This method updates states of variable nodes in @var varnodelist by performing message passing.
+        Every variable node in @var varnodelist requests messages from its check node neighbors.
         The received belief vectors are stored locally.
-        If no list is provided, then all the variable nodes in the factor graph are updated.
-        :param varnodelist: List of identifiers for the variable nodes to be updated
-        :return: List of identifiers for the check contacted during the update
+        If no list is provided, then all variable nodes in factor graph are updated.
+        :param varnodelist: List of identifiers for variable nodes to be updated
+        :return: List of identifiers for check node contacted during update
         """
         if varnodelist is None:
-            for varnode in self.__VarNodes:
+            for varnode in self.__VarNodes.values():
                 checkneighborlist = varnode.getneighbors()
                 # print('Updating State of Variable ' + str(varnode.getid()), end=' ')
                 # print('Using Check Neighbors ' + str(checkneighborlist))
                 for checknodeid in checkneighborlist:
                     # print('\t Variable Neighbor: ' + str(neighbor))
                     # print('\t Others: ' + str([member for member in checkneighborlist if member is not neighbor]))
-                    varnode.setmessagefromcheck(checknodeid,
-                                                self.__CheckNodes[checknodeid].getmessagetovar(varnode.getid()))
+                    measure = self.__CheckNodes[checknodeid].getmessagetovar(varnode.getid())
+                    weight = np.linalg.norm(measure, ord=1)
+                    if weight != 0:
+                        measure = measure / weight
+                    else:
+                        pass
+                    varnode.setmessagefromcheck(checknodeid, measure)
             return
         else:
             checkneighborsaggregate = set()
@@ -466,8 +475,8 @@ class Graph:
 
     def getestimate(self, varnodeid):
         """
-        This method returns the belief vector associated with variable node @var varnodeid.
-        :param varnodeid: Identifier of the variable node to be queried
+        This method returns belief vector associated with variable node @var varnodeid.
+        :param varnodeid: Identifier of variable node to be queried
         :return: Belief vector from variable node @var varnodeid
         """
         varnode = self.__VarNodes[varnodeid]
@@ -475,94 +484,138 @@ class Graph:
 
     def getestimates(self):
         """
-        This method returns belief vectors for all the variable nodes in the bipartite graph.
+        This method returns belief vectors for all variable nodes in bipartite graph.
+        Belief vectors are sorted according to @var varnodeid.
         :return: Array of belief vectors from all variable nodes
         """
-        estimates = np.empty((self.__VarCount, self.__SparseSecLength), dtype=float)
-        for varnode in self.__VarNodes[1:]:
-            estimates[varnode.getid() - 1] = varnode.getestimate()
+        estimates = np.empty((self.getvarcount(), self.getsparseseclength()), dtype=float)
+        idx = 0
+        for varnodeid in sorted(self.getvarlist()):
+            estimates[idx] = self.__VarNodes[varnodeid].getestimate()
+            idx = idx + 1
         return estimates
 
     def getextrinsicestimate(self, varnodeid):
         """
-        This method returns the belief vector associated with variable node @var varnodeid,
-        based only on extrinsic information.
-        It does not incorporate information from the local observation @var checknode zero.
+        This method returns belief vector associated with variable node @var varnodeid,
+        based solely on extrinsic information.
+        It does not incorporate information from local observation @var checknodeid = 0.
         :param varnodeid: Identifier of the variable node to be queried
         :return:
         """
         return self.__VarNodes[varnodeid].getmessagetocheck(0)
 
+
+class SystematicEncoding(Graph):
+
+    def __init__(self, check2varedges, infonodeindices, seclength):
+        super().__init__(check2varedges, seclength)
+
+        self.__InfoNodeIndices = sorted(infonodeindices)
+        self.__InfoCount = len(self.__InfoNodeIndices)
+        self.__ParityNodeIndices = [member for member in super().getvarlist() if member not in self.__InfoNodeIndices]
+        self.__ParityCount = len(self.__ParityNodeIndices)
+        print('Indices of information nodes: ' + str(self.__InfoNodeIndices))
+        print('Indices of parity nodes: ' + str(self.__ParityNodeIndices))
+
+    def getinfolist(self):
+        return self.__InfoNodeIndices
+
+    def getinfocount(self):
+        return self.__InfoCount
+
+    def getparitylist(self):
+        return self.__ParityNodeIndices
+
     def getcodeword(self):
         """
-
-        :return:
+        This method returns surviving codeword after systematic encoding and belief propagation.
+        Codeword sections are sorted according to @var varnodeid.
+        :return: Codeword in sections
         """
-        codeword = np.empty((self.__VarCount, self.__SparseSecLength), dtype=int)
-        for varnode in self.__VarNodes[1:]:  # self.__VarNodes[0] is a dummy codeword
-            block = np.zeros(self.__SparseSecLength, dtype=int)
-            if np.max(varnode.getestimate()) > 0:
-                block[np.argmax(varnode.getestimate())] = 1
-            codeword[varnode.getid() - 1] = block
-        return codeword
+        codeword = np.empty((super().getvarcount(), super().getsparseseclength()), dtype=int)
+        idx = 0
+        for varnodeid in sorted(super().getvarlist()):
+            block = np.zeros(super().getsparseseclength(), dtype=int)
+            if np.max(super().getestimate(varnodeid)) > 0:
+                block[np.argmax(super().getestimate(varnodeid))] = 1
+            codeword[idx] = block
+            idx = idx + 1
+        return np.rint(codeword)
 
     def encodemessage(self, bits):
-        if len(bits) == (self.__InfoCount * self.__SecLength):
-            bitsections = np.resize(bits, [self.__InfoCount, self.__SecLength])
-            self.reset()  # Reinitialize factor graph before encoding
-            for varnodeindex in range(self.__InfoCount):
-                varnodeid = self.__InfoNodeIndices[varnodeindex]
-                fragment = np.inner(bitsections[varnodeindex], 2 ** np.arange(self.__SecLength))
-                # fragment = np.inner(bitsections[varnodeindex], 2 ** np.arange(self.__SecLength)[::-1]) # CHECK
-                sparsefragment = np.zeros(self.__SparseSecLength, dtype=int)
+        """
+        This method performs systematic encoding and belief propagation.
+        Bipartite graph is initialized: local observations for information blocks are derived from message sequence,
+        parity states are set to all ones.
+        :param bits: Information bits comprising original message
+        """
+        if len(bits) == (self.getinfocount() * super().getseclength()):
+            bits = np.array(bits).reshape((self.getinfocount(), super().getseclength()))
+            # Container for fragmented message bits.
+            bitsections = dict()
+            idx = 0
+            for varnodeid in self.getinfolist():
+                # Message bits corresponding to fragment @var varnodeid.
+                bitsections.update({varnodeid: bits[idx]})
+                idx = idx + 1
+            # Reinitialize factor graph to ensure there are no lingering states.
+            # Node states are set to uninformative measures.
+            super().reset()
+            for varnodeid in self.getinfolist():
+                # Compute index of fragment @var varnodeid
+                fragment = np.inner(bitsections[varnodeid], 2 ** np.arange(super().getseclength()))
+                # Set sparse representation to all zeros, except for proper location.
+                sparsefragment = np.zeros(super().getsparseseclength(), dtype=int)
                 sparsefragment[fragment] = 1
+                # Set local observation for systematic variable nodes.
                 self.setobservation(varnodeid, sparsefragment)
                 # print('Variable node ' + str(varnodeid), end=' ')
                 # print(' -- Observation changed to: ' + str(np.argmax(self.getobservation(varnodeid))))
 
-            varnodesvisited = set(self.__VarNodeIndices)
-            checknodesvisited = set([])
-            varnodes2visitnext = set(varnodesvisited)
-            checknodes2visitnext = set([])
-            for idx in range(3):  # Need to change this
+            for idx in range(super().getvarcount()):  # Need to change this
                 self.updatechecks()  # Update Check first
                 self.updatevars()
-                # checknodes2visitnext = set(self.updatevars(varnodes2visitnext)) - checknodesvisited
-                # checknodesvisited = checknodesvisited - checknodes2visitnext
-                # # print(self.updatechecks(checknodes2visitnext))
-                # varnodes2visitnext = set(self.updatechecks(checknodes2visitnext))- varnodesvisited
-                # # print(self.updatevars(varnodes2visitnext))
-                # varnodesvisited = varnodesvisited | varnodes2visitnext
-
-            return self.getcodeword()
+                # Check if all variable nodes are set.
+                if ((np.linalg.norm(np.rint(super().getestimates()).flatten(), ord=0)) == super().getvarcount()):
+                    break
+            codeword = np.rint(super().getestimates()).flatten()
+            return codeword
         else:
             print('Length of input array is not ' + str(self.getinfocount() * self.getseclength()))
 
     def encodemessages(self, infoarray):
         codewords = []
         for messageindex in range(len(infoarray)):
-            codewords.append(self.encodemessage(infoarray[messageindex]).flatten().astype(int))
+            codewords.append(self.encodemessage(infoarray[messageindex]))
         return np.asarray(codewords)
 
     def encodesignal(self, infoarray):
-        signal = [np.zeros(self.__SparseSecLength, dtype=float) for l in range(self.__VarCount)]
+        signal = [np.zeros(super().getsparseseclength(), dtype=float) for l in range(super().getvarcount())]
         for messageindex in range(len(infoarray)):
-            signal = signal + self.encodemessage(infoarray[messageindex]).astype(int)
+            signal = signal + self.encodemessage(infoarray[messageindex])
         return signal
 
+    # Method testvalid needs attention; it may not be necessary
     def testvalid(self, codeword):  # ISSUE IN USING THIS FOR NOISY CODEWORDS, INPUT SHOULD BE MEASURE
         self.reset()
-        if len(codeword) == (self.__CodewordLength):
-            bitsections = np.resize(codeword, [self.__VarCount, self.__SparseSecLength])
-            for varnodeid in self.__VarNodeIndices:
-                self.setobservation(varnodeid, bitsections[varnodeid - 1])
+        if len(codeword) == (self.getvarcount() * self.getsparseseclength()):
+            sparsesections = codeword.reshape((super().getvarcount(), super().getsparseseclength()))
+            # Container for fragmented message bits.
+            idx = 0
+            for varnodeid in sorted(super().getvarlist()):
+                # Sparse section corresponding to @var varnodeid.
+                super().setobservation(varnodeid, sparsesections[idx])
+                idx = idx + 1
                 # print('Variable node ' + str(varnodeid), end=' ')
                 # print(' -- Observation changed to: ' + str(np.argmax(self.getobservation(varnodeid))))
 
-            for idx in range(16):
-                # print(self.getestimates())
+            for idx in range(super().getvarcount()): # NEEDS attention
                 self.updatechecks()
                 self.updatevars()
+                # Check if all variable nodes remain sparse.
+                if ((np.linalg.norm(np.rint(super().getestimates()).flatten(), ord=0)) == super().getvarcount()):
+                    break
         else:
             print('Issue')
         return self.getcodeword()
