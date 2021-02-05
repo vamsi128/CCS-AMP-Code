@@ -79,13 +79,17 @@ class Graph62(ccsfg.SystematicEncoding):
 
 def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MAYBE
     """
-    Takes state estimates and return `count` likely codewords.
+    This method seeks to disambiguate codewords from node states.
+    Gather local state estimates from variables nodes and retain top values in place.
+    Set values of other indices within every section to zero.
+    Perform belief propagation and return `count` likely codewords.
     :param graph: Bipartite graph for error correcting code.
-    :param stateestimates: Local estimates for variable nodes.
+    :param stateestimates: Local estimates from variable nodes.
     :param count: Maximum number of codewords returned.
     :return: List of likely codewords.
     """
 
+    # Resize @var stateestimates to match local measures from variable nodes.
     stateestimates.resize(graph.getvarcount(), graph.getsparseseclength())
     thresholdedestimates = np.zeros(stateestimates.shape)
     # hardestimates = np.zeros(stateestimates.shape)
@@ -116,23 +120,32 @@ def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MA
     #         thresholdedestimates[idx,topidx] = stateestimates[idx,topidx] if (vector[topidx] != 0) else 0
     # print('\n')
 
-    # Find `count` most likely locations in every section and zero out the rest.
+    # Retain most likely values in every section.
     topindices = []
     idx: int
     for idx in range(graph.getvarcount()):
+        # Function np.argpartition puts indices of top arguments at the end (unordered).
+        # Variable @var trailingtopindices holds these arguments.
         vector = stateestimates[idx, :].copy()
         trailingtopindices = np.argpartition(vector, -1024)[-1024:]
-        topindices.append(trailingtopindices)  # Indices of `count` most likely locations
-        for topidx in topindices[idx]:  # Set most likely locations to one
+        # Retain values corresponding to top indices and zero out other entries.
+        topindices.append(trailingtopindices)
+        for topidx in topindices[idx]:
             thresholdedestimates[idx, topidx] = vector[topidx] if (vector[topidx] != 0) else 0
-        # print(np.linalg.norm(thresholdedestimates[idx,:], ord=0), end=' ')
 
+    # Find `count` most likely locations in every section and zero out the rest.
+    # List of candidate codewords.
     recoveredcodewords = []
+    # Function np.argpartition puts indices of top arguments at the end.
+    # If count differs from above argument, then new call to np.argpartition, as output are not ordered.
+    # Indices of `count` most likely locations in root section
     vector = thresholdedestimates[0, :].copy()  # Section 0 acts as root
     topindices = np.argpartition(vector, -count)  # Indices of `count` most likely locations in root
-    for topidx in topindices[-count:]:  # Iterating through evey location in root node
+    # Iterating through evey retained location in root section
+    for topidx in topindices[-count:]:
         print('Root section ID: ' + str(topidx))
-        graph.reset()  # Need reset for decoding every root location
+        # Reset graph, including check nodes, is critical for every root location.
+        graph.reset()
         newvector = np.zeros(graph.getsparseseclength())
         newvector[topidx] = 1 if (vector[topidx] != 0) else 0
         graph.setobservation(1, newvector)
