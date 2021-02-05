@@ -96,7 +96,6 @@ def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MA
 
     # NOTE: the pruning of impossible paths prior to root decoding doesn't seem to help.
     # topindices = []
-    # graph.reset()
     # idx: int
     # for idx in range(graph.getvarcount()):
     #     vector = stateestimates[idx,:].copy()
@@ -121,17 +120,14 @@ def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MA
     # print('\n')
 
     # Retain most likely values in every section.
-    topindices = []
     idx: int
     for idx in range(graph.getvarcount()):
         # Function np.argpartition puts indices of top arguments at the end (unordered).
         # Variable @var trailingtopindices holds these arguments.
-        vector = stateestimates[idx, :].copy()
-        trailingtopindices = np.argpartition(vector, -1024)[-1024:]
+        trailingtopindices = np.argpartition(stateestimates[idx], -1024)[-1024:]
         # Retain values corresponding to top indices and zero out other entries.
-        topindices.append(trailingtopindices)
-        for topidx in topindices[idx]:
-            thresholdedestimates[idx, topidx] = vector[topidx] if (vector[topidx] != 0) else 0
+        for topidx in trailingtopindices:
+            thresholdedestimates[idx, topidx] = stateestimates[idx, topidx]
 
     # Find `count` most likely locations in every section and zero out the rest.
     # List of candidate codewords.
@@ -157,7 +153,7 @@ def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MA
 
         varnodes2update = set(graph.getvarlist())
         checknodes2update = set(graph.getchecklist())
-        for iter in range(graph.getmaxdepth()):  # Max depth
+        for iteration in range(graph.getmaxdepth()):  # Max depth
             graph.updatechecks(checknodes2update)  # Update Check first
             graph.updatevars(varnodes2update)
             for varnodeid in varnodes2update:
