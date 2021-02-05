@@ -135,22 +135,24 @@ def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MA
     # Function np.argpartition puts indices of top arguments at the end.
     # If count differs from above argument, then new call to np.argpartition, as output are not ordered.
     # Indices of `count` most likely locations in root section
-    vector = thresholdedestimates[0, :].copy()  # Section 0 acts as root
-    topindices = np.argpartition(vector, -count)  # Indices of `count` most likely locations in root
+    trailingtopindices = np.argpartition(thresholdedestimates[0, :], -count)[-count:]
     # Iterating through evey retained location in root section
-    for topidx in topindices[-count:]:
+    for topidx in trailingtopindices:
         print('Root section ID: ' + str(topidx))
         # Reset graph, including check nodes, is critical for every root location.
         graph.reset()
-        newvector = np.zeros(graph.getsparseseclength())
-        newvector[topidx] = 1 if (vector[topidx] != 0) else 0
-        graph.setobservation(1, newvector)
+        rootsingleton = np.zeros(graph.getsparseseclength())
+        rootsingleton[topidx] = 1 if (thresholdedestimates[0, topidx] != 0) else 0
+        graph.setobservation(1, rootsingleton)
         for idx in range(1, graph.getvarcount()):
             graph.setobservation(idx + 1, stateestimates[idx, :])
             # graph.setobservation(idx+1,thresholdedestimates[idx,:])
 
         ## This may only work for hierchical settings.
 
+        # Start with full list of nodes to update.
+        graph.updatechecks()
+        graph.updatevars()
         varnodes2update = set(graph.getvarlist())
         checknodes2update = set(graph.getchecklist())
         for iteration in range(graph.getmaxdepth()):  # Max depth
@@ -166,10 +168,8 @@ def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MA
                     checknodes2update = checknodes2update - {checknodeid}
                     # print('Check nodes to update: ' + str(checknodes2update))
 
-        #
-        # for iter in range(graph.getmaxdepth()):    # Max depth
-        #     graph.updatechecks()
-        #     graph.updatevars()
+        # print(np.linalg.norm(rootsingleton, ord=0), end=' ')
+        # print(np.linalg.norm(graph.getestimate(2), ord=0))
 
         decoded = graph.getcodeword().flatten()
         decodedsum = np.sum(decoded.flatten())
