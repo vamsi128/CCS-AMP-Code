@@ -124,7 +124,7 @@ class VariableNodeFFT(GenericNode):
         """
         Reset states of every variable node to uninformative measures (all ones)
         """
-        for neighborid in self.getneighbors():
+        for neighborid in super().getneighbors():
             self.setstate(neighborid, np.ones(self.__MessageLength, dtype=float))
 
     def getneighbors(self):
