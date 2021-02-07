@@ -122,10 +122,13 @@ class VariableNodeFFT(GenericNode):
 
     def reset(self):
         """
-        Reset states of every variable node to uninformative measures (all ones)
+        Reset every state of variable node to uninformative measures (all ones).
+        This method employs super().getneighbors() to properly reset message for
+        (trivial) check node zero to uninformative measure.
         """
         for neighborid in super().getneighbors():
             self.setstate(neighborid, np.ones(self.__MessageLength, dtype=float))
+        # self.setobservation(self, np.ones(self.__MessageLength, dtype=float))
 
     def getneighbors(self):
         """
@@ -224,7 +227,7 @@ class CheckNodeFFT(GenericNode):
 
     def reset(self):
         """
-        Reset states of every check node to uninformative measures (FFT of all ones)
+        Reset every states check node to uninformative measures (FFT of all ones)
         """
         # uninformative = np.fft.rfft(np.ones(self.__MessageLength, dtype=float))
         uninformative = np.zeros(self.__MessageLength, dtype=float)
@@ -533,12 +536,12 @@ class SystematicEncoding(Graph):
         Codeword sections are sorted according to @var varnodeid.
         :return: Codeword in sections
         """
-        codeword = np.empty((super().getvarcount(), super().getsparseseclength()), dtype=int)
+        codeword = np.empty((self.getvarcount(), self.getsparseseclength()), dtype=int)
         idx = 0
-        for varnodeid in sorted(super().getvarlist()):
-            block = np.zeros(super().getsparseseclength(), dtype=int)
-            if np.max(super().getestimate(varnodeid)) > 0:
-                block[np.argmax(super().getestimate(varnodeid))] = 1
+        for varnodeid in sorted(self.getvarlist()):
+            block = np.zeros(self.getsparseseclength(), dtype=int)
+            if np.max(self.getestimate(varnodeid)) > 0:
+                block[np.argmax(self.getestimate(varnodeid))] = 1
             codeword[idx] = block
             idx = idx + 1
         return np.rint(codeword)
@@ -550,8 +553,8 @@ class SystematicEncoding(Graph):
         parity states are set to all ones.
         :param bits: Information bits comprising original message
         """
-        if len(bits) == (self.getinfocount() * super().getseclength()):
-            bits = np.array(bits).reshape((self.getinfocount(), super().getseclength()))
+        if len(bits) == (self.getinfocount() * self.getseclength()):
+            bits = np.array(bits).reshape((self.getinfocount(), self.getseclength()))
             # Container for fragmented message bits.
             bitsections = dict()
             idx = 0
@@ -561,25 +564,25 @@ class SystematicEncoding(Graph):
                 idx = idx + 1
             # Reinitialize factor graph to ensure there are no lingering states.
             # Node states are set to uninformative measures.
-            super().reset()
+            self.reset()
             for varnodeid in self.getinfolist():
                 # Compute index of fragment @var varnodeid
-                fragment = np.inner(bitsections[varnodeid], 2 ** np.arange(super().getseclength()))
+                fragment = np.inner(bitsections[varnodeid], 2 ** np.arange(self.getseclength()))
                 # Set sparse representation to all zeros, except for proper location.
-                sparsefragment = np.zeros(super().getsparseseclength(), dtype=int)
+                sparsefragment = np.zeros(self.getsparseseclength(), dtype=int)
                 sparsefragment[fragment] = 1
                 # Set local observation for systematic variable nodes.
                 self.setobservation(varnodeid, sparsefragment)
                 # print('Variable node ' + str(varnodeid), end=' ')
                 # print(' -- Observation changed to: ' + str(np.argmax(self.getobservation(varnodeid))))
 
-            for idx in range(super().getvarcount()):  # Need to change this
+            for idx in range(self.getvarcount()):  # Need to change this
                 self.updatechecks()  # Update Check first
                 self.updatevars()
                 # Check if all variable nodes are set.
-                if ((np.linalg.norm(np.rint(super().getestimates()).flatten(), ord=0)) == super().getvarcount()):
+                if ((np.linalg.norm(np.rint(self.getestimates()).flatten(), ord=0)) == self.getvarcount()):
                     break
-            codeword = np.rint(super().getestimates()).flatten()
+            codeword = np.rint(self.getestimates()).flatten()
             return codeword
         else:
             print('Length of input array is not ' + str(self.getinfocount() * self.getseclength()))
@@ -591,7 +594,7 @@ class SystematicEncoding(Graph):
         return np.asarray(codewords)
 
     def encodesignal(self, infoarray):
-        signal = [np.zeros(super().getsparseseclength(), dtype=float) for l in range(super().getvarcount())]
+        signal = [np.zeros(self.getsparseseclength(), dtype=float) for l in range(self.getvarcount())]
         for messageindex in range(len(infoarray)):
             signal = signal + self.encodemessage(infoarray[messageindex])
         return signal
@@ -600,21 +603,21 @@ class SystematicEncoding(Graph):
     def testvalid(self, codeword):  # ISSUE IN USING THIS FOR NOISY CODEWORDS, INPUT SHOULD BE MEASURE
         self.reset()
         if len(codeword) == (self.getvarcount() * self.getsparseseclength()):
-            sparsesections = codeword.reshape((super().getvarcount(), super().getsparseseclength()))
+            sparsesections = codeword.reshape((self.getvarcount(), self.getsparseseclength()))
             # Container for fragmented message bits.
             idx = 0
-            for varnodeid in sorted(super().getvarlist()):
+            for varnodeid in sorted(self.getvarlist()):
                 # Sparse section corresponding to @var varnodeid.
-                super().setobservation(varnodeid, sparsesections[idx])
+                self.setobservation(varnodeid, sparsesections[idx])
                 idx = idx + 1
                 # print('Variable node ' + str(varnodeid), end=' ')
                 # print(' -- Observation changed to: ' + str(np.argmax(self.getobservation(varnodeid))))
 
-            for idx in range(super().getvarcount()): # NEEDS attention
+            for idx in range(self.getvarcount()): # NEEDS attention
                 self.updatechecks()
                 self.updatevars()
                 # Check if all variable nodes remain sparse.
-                if ((np.linalg.norm(np.rint(super().getestimates()).flatten(), ord=0)) == super().getvarcount()):
+                if ((np.linalg.norm(np.rint(self.getestimates()).flatten(), ord=0)) == self.getvarcount()):
                     break
         else:
             print('Issue')
