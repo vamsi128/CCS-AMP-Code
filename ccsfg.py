@@ -229,9 +229,8 @@ class CheckNodeFFT(GenericNode):
         """
         Reset every states check node to uninformative measures (FFT of all ones)
         """
-        # uninformative = np.fft.rfft(np.ones(self.__MessageLength, dtype=float))
-        uninformative = np.zeros(self.__MessageLength, dtype=float)
-        uninformative[0] = self.__MessageLength
+        uninformative = np.fft.rfft(np.ones(self.__MessageLength, dtype=float))
+        # The length of np.fft.rfft is NOT self.__MessageLength.
         for neighborid in self.getneighbors():
             self.setstate(neighborid, uninformative)
 
@@ -576,11 +575,11 @@ class SystematicEncoding(Graph):
                 # print('Variable node ' + str(varnodeid), end=' ')
                 # print(' -- Observation changed to: ' + str(np.argmax(self.getobservation(varnodeid))))
 
-            for idx in range(self.getvarcount()):  # Need to change this
+            for iteration in range(self.getvarcount()):  # Need to change this
                 self.updatechecks()  # Update Check first
                 self.updatevars()
-                # Check if all variable nodes are set.
-                if ((np.linalg.norm(np.rint(self.getestimates()).flatten(), ord=0)) == self.getvarcount()):
+                # Check if every section has converged to a unique location and, hence, variable nodes are determined.
+                if np.array_equal(np.linalg.norm(np.rint(self.getestimates()), ord=0, axis=1), [1] * self.getvarcount()):
                     break
             codeword = np.rint(self.getestimates()).flatten()
             return codeword
