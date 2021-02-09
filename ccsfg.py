@@ -200,10 +200,14 @@ class VariableNodeFFT(GenericNode):
         elif np.isscalar(measure):
             return measure
         else:
-            try:
-                return measure / np.linalg.norm(measure, ord=1)
-            except ZeroDivisionError:
+            # Normalize only if measure is not zero vector.
+            # Numpy function np.isclose() breaks execution.
+            weight = np.linalg.norm(measure, ord=1)
+            if weight == 0:
                 return measure
+            else:
+                # Under Numpy, division by zero seems to be a warning.
+                return measure / np.linalg.norm(measure, ord=1)
 
 
 class CheckNodeFFT(GenericNode):
@@ -354,6 +358,9 @@ class Graph:
     def getsparseseclength(self):
         return self.__SparseSecLength
 
+    def getvarneighbors(self, varnodeid):
+        return self.__VarNodes[varnodeid].getneighbors()
+
     def getcheckneighbors(self, checknodeid):
         return self.__CheckNodes[checknodeid].getneighbors()
 
@@ -471,8 +478,13 @@ class Graph:
                 for checknodeid in checkneighborlist:
                     # print('\t Variable Neighbor: ' + str(neighbor))
                     # print('\t Others: ' + str([member for member in checkneighborlist if member is not neighbor]))
-                    varnode.setmessagefromcheck(checknodeid,
-                                                self.__CheckNodes[checknodeid].getmessagetovar(varnode.getid()))
+                    measure = self.__CheckNodes[checknodeid].getmessagetovar(varnode.getid())
+                    weight = np.linalg.norm(measure, ord=1)
+                    if weight != 0:
+                        measure = measure / weight
+                    else:
+                        pass
+                    varnode.setmessagefromcheck(checknodeid, measure)
             return list(checkneighborsaggregate)
 
     def getestimate(self, varnodeid):
