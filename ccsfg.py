@@ -578,7 +578,7 @@ class SystematicEncoding(Graph):
             self.reset()
             for varnodeid in self.getinfolist():
                 # Compute index of fragment @var varnodeid
-                fragment = np.inner(bitsections[varnodeid], 2 ** np.arange(self.getseclength()))
+                fragment = np.inner(bitsections[varnodeid], 2 ** np.arange(self.getseclength())[::-1])  
                 # Set sparse representation to all zeros, except for proper location.
                 sparsefragment = np.zeros(self.getsparseseclength(), dtype=int)
                 sparsefragment[fragment] = 1
@@ -599,13 +599,23 @@ class SystematicEncoding(Graph):
             print('Length of input array is not ' + str(self.getinfocount() * self.getseclength()))
 
     def encodemessages(self, infoarray):
+        """
+        This method encodes multiple messages into codewords by performing systematic encoding 
+        and belief propagation on each individual message.
+        :param infoarray: array of binary messages to be encoded
+        """
+
         codewords = []
         for messageindex in range(len(infoarray)):
             codewords.append(self.encodemessage(infoarray[messageindex]))
         return np.asarray(codewords)
 
     def encodesignal(self, infoarray):
-        signal = [np.zeros(self.getsparseseclength(), dtype=float) for l in range(self.getvarcount())]
+        """
+        This method encodes multiple messages into a signal
+        :param infoarray: array of binary messages to be encoded
+        """
+        signal = np.array([np.zeros(self.getsparseseclength(), dtype=float) for l in range(self.getvarcount())]).flatten()
         for messageindex in range(len(infoarray)):
             signal = signal + self.encodemessage(infoarray[messageindex])
         return signal

@@ -90,96 +90,119 @@ def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MA
     """
 
     # Resize @var stateestimates to match local measures from variable nodes.
-    stateestimates.resize(graph.getvarcount(), graph.getsparseseclength())
-    thresholdedestimates = np.zeros(stateestimates.shape)
-    # hardestimates = np.zeros(stateestimates.shape)
-
-    # NOTE: the pruning of impossible paths prior to root decoding doesn't seem to help.
-    # topindices = []
-    # idx: int
-    # for idx in range(graph.getvarcount()):
-    #     vector = stateestimates[idx,:].copy()
-    #     trailingtopindices = np.argpartition(vector, -128)[-128:]
-    #     topindices.append(trailingtopindices)    # Indices of `count` most likely locations
-    #     for topidx in topindices[idx]:    # Set most likely locations to one
-    #         hardestimates[idx,topidx] = 1 if (vector[topidx] != 0) else 0
-    #     print(np.linalg.norm(hardestimates[idx,:], ord=0), end=' ')
-    #     graph.setobservation(idx+1,hardestimates[idx,:])
-    # print('\n')
-    #
-    # for iter in range(16):    # For Graph6
-    #     graph.updatechecks()  # Update Check first
-    #     graph.updatevars()
-    #
-    # for idx in range(graph.getvarcount()):
-    #     hardestimates[idx] = graph.getestimate(idx+1)
-    #     print(np.linalg.norm(hardestimates[idx,:], ord=0), end=' ')
-    #     vector = hardestimates[idx,:].copy()
-    #     for topidx in topindices[idx]:    # Set most likely locations to one
-    #         thresholdedestimates[idx,topidx] = stateestimates[idx,topidx] if (vector[topidx] != 0) else 0
-    # print('\n')
-
-    # Retain most likely values in every section.
-    idx: int
-    for idx in range(graph.getvarcount()):
-        # Function np.argpartition puts indices of top arguments at the end (unordered).
-        # Variable @var trailingtopindices holds these arguments.
-        trailingtopindices = np.argpartition(stateestimates[idx], -1024)[-1024:]
-        # Retain values corresponding to top indices and zero out other entries.
-        for topidx in trailingtopindices:
-            thresholdedestimates[idx, topidx] = stateestimates[idx, topidx]
-
-    # Find `count` most likely locations in every section and zero out the rest.
-    # List of candidate codewords.
-    recoveredcodewords = []
-    # Function np.argpartition puts indices of top arguments at the end.
-    # If count differs from above argument, then new call to np.argpartition, as output are not ordered.
-    # Indices of `count` most likely locations in root section
-    trailingtopindices = np.argpartition(thresholdedestimates[0, :], -count)[-count:]
-    # Iterating through evey retained location in root section
+    stateestimates = np.resize(stateestimates, 
+                        (graph.getvarcount(), graph.getsparseseclength())).astype(float)
+    stateestimates = stateestimates / np.sum(stateestimates, axis=1).reshape((-1, 1))   # normalize so that each measure is a valid PMF
+    recoveredcodewords = []                                                             # list of candidate codewords
+    trailingtopindices = list(np.argpartition(stateestimates[0, :], -count)[-count:])   # indices of `count` most likely roots
+    print('\nState Estimates: \n' + str(stateestimates))
+    print('Trailing Top Indices: \n' + str(trailingtopindices))
+    
+    # Iterate through evey retained location in root section
     for topidx in trailingtopindices:
-        print('Root section ID: ' + str(topidx))
-        # Reset graph, including check nodes, is critical for every root location.
+
+        # Reset graph, including check nodes. This is critical for every root location.
         graph.reset()
+        print('Root section ID: ' + str(topidx))
+
+        # If a topidx corresponds to a 0 in stateestimates, it has 0 probability...
+        if stateestimates[0, topidx] == 0:
+            print('Skipping root index %d because it has zero probability.' % topidx)
+            continue
+
+        # Initialize graph.  Set belief measure for 1st node to be an standard basis vector of message root index
         rootsingleton = np.zeros(graph.getsparseseclength())
-        rootsingleton[topidx] = 1 if (thresholdedestimates[0, topidx] != 0) else 0
+        rootsingleton[topidx] = 1
         graph.setobservation(1, rootsingleton)
         for idx in range(1, graph.getvarcount()):
             graph.setobservation(idx + 1, stateestimates[idx, :])
-            # graph.setobservation(idx+1,thresholdedestimates[idx,:])
-
-        ## This may only work for hierchical settings.
 
         # Start with full list of nodes to update.
         graph.updatechecks()
         graph.updatevars()
         varnodes2update = set(graph.getvarlist())
         checknodes2update = set(graph.getchecklist())
+
+        # run maxdepth iterations of BP
         for iteration in range(graph.getmaxdepth()):  # Max depth
-            graph.updatechecks(checknodes2update)  # Update Check first
+            
+            # Update check and variable node messages; Update Checks first
+            graph.updatechecks(checknodes2update)  
             graph.updatevars(varnodes2update)
+
+            # prune sets of nodes to update in each iteration
             for varnodeid in varnodes2update:
                 weight = graph.getestimate(varnodeid)
                 if np.sum(weight) == np.amax(weight):
                     varnodes2update = varnodes2update - {varnodeid}
                     # print('Variable nodes to update: ' + str(varnodes2update))
+
             for checknodeid in checknodes2update:
                 if set(graph.getcheckneighbors(checknodeid)).isdisjoint(varnodes2update):
                     checknodes2update = checknodes2update - {checknodeid}
                     # print('Check nodes to update: ' + str(checknodes2update))
 
-        # print(np.linalg.norm(rootsingleton, ord=0), end=' ')
-        # print(np.linalg.norm(graph.getestimate(2), ord=0))
-
+        # recover estimated codeword
         decoded = graph.getcodeword().flatten()
         decodedsum = np.sum(decoded.flatten())
-        if decodedsum == graph.getvarcount():
+
+        # Case 1: decoder successfully disambiguates a codeword starting from given root node
+        if (decodedsum == graph.getvarcount()) and np.array_equal(decoded, graph.testvalid(decoded).flatten()): 
+            
+            # add estimated codeword to list of recovered codewords
             recoveredcodewords.append(decoded)
-        elif decodedsum > graph.getvarcount():  # CHECK: Can be improved later
+            print('Valid codeword added to list of recovered codewords.')
+
+            # remove belief associated with disambiguated codeword from stateestimate
+            idxdecoded = np.mod(np.where(decoded.flatten())[0], graph.getsparseseclength())
+            for i in range(graph.getvarcount()):
+                if (stateestimates[i, idxdecoded[i]] >= 1/count):
+                    stateestimates[i, idxdecoded[i]] -= 1/count
+                else:
+                    stateestimates[i, idxdecoded[i]] /= count
+
+            # If there is still significant belief on this root, try searching for another codeword that begins with this root
+            if (stateestimates[0, idxdecoded[0]] > 1/(2*count)) and (trailingtopindices.count(topidx) < count):
+                print('Root %d has potential for another valid codeword.  Adding to the queue for retrial. ' % topidx)
+                trailingtopindices.append(topidx)
+
+        # Case 2: JF gives the decoder a weird input.   Not sure how this would happen...
+        elif decodedsum > graph.getvarcount(): 
             print('Disambiguation failed.')
-            recoveredcodewords.append(decoded)
+
+        # Case 3: decoder fails to disambiguate a valid codeword starting from given root node
         else:
-            pass
+            # NOTE: The occurence of this event offers us some important information.  One of the following errors must have happened:  
+            # 1. One of the most likely root nodes (stored in trailingtopindices) is the root of more than one valid codeword, 
+            #    each of which is equally likely.  This forces BP to converge to something that is not a valid codeword.
+            # 2. Our estimate of the most likely root nodes (trailingtopindices) excluded a valid root node in favor of an invalid root node.
+            # 3. We zeroed out a necessary component of one of the codewords, thus making it impossible for BP to find the codeword
+
+            print('No consistent codeword found.')
+
+            # Solution to problem # 1:
+            # Retry disambiguating a valid codeword starting from the root node after decreasing the belief on the false codeword indices.
+            # This will, with some probability, force the two valid codewords to have unequal probabilities, enabling BP to converge to the
+            # more likely codeword correctly. 
+            #
+            # Try again starting from this root node 
+            if trailingtopindices.count(topidx) < count:
+                trailingtopindices.append(topidx)
+                print('Adding root node %d to the queue for retrial.' % topidx)
+
+            # Decrease belief on invalid codeword indices
+            idxdecoded = np.mod(np.where(decoded.flatten())[0], graph.getsparseseclength())
+            if idxdecoded.size > 0:
+                for i in range(graph.getvarcount()):            # FIXME: potential problem if one of the sections is all zeros and has no 1s...
+                    stateestimates[i, idxdecoded[i]] *= 0.9
+
+            # Solution to problem #2: 
+            # (Not yet implemented).  We would need to keep the delta*count, delta > 1, top root indices and try to 
+            # disambiguate a message starting from each of these root indices.  This should be a simple modification to this code,
+            # should we deem this modification necessary. 
+
+            # Solution to problem #3: 
+            # In the current implementation of the decoder, this should not happen. 
 
     # Order candidates
     likelihoods = []
@@ -189,13 +212,13 @@ def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MA
         likelihoods.append(np.prod(np.amax(isolatedvalues, axis=1)))
     idxsorted = np.argsort(likelihoods)
     recoveredcodewords = [recoveredcodewords[idx] for idx in idxsorted[::-1]]
-    return recoveredcodewords
+    return np.array(recoveredcodewords)
 
 
 def numbermatches(codewords, recoveredcodewords, maxcount=None):
     """
     Counts number of matches between `codewords` and `recoveredcodewords`.
-    CHECK: Does not insure uniqueness.
+    CHECK: Does not ensure uniqueness.
     :param codewords: List of true codewords.
     :param recoveredcodewords: List of candidate codewords from most to least likely.
     :return: Number of true codewords recovered.
@@ -223,28 +246,24 @@ def displayinfo(graph, binarysequence):
     print(sections)
 
 
-
-TestCode = GraphTest(3)
-TestCode.printgraph()
-TestCode.reset()
-infoarray = [[1, 0, 0, 0, 1, 0]]
-codeword = TestCode.encodemessage(infoarray[0])
-
-
-
-
-# TestCode.printgraphcontent()
-#
-# NumberDevices = 1
-# # infoarray = np.random.randint(2, size=(NumberDevices,TestCode.getinfocount()*TestCode.getseclength()))
+# Simulation Parameters
 # infoarray = [[1, 0, 0, 0, 1, 0]]
-# print('Information bits:\n' + str(infoarray))
-# print('Signal sections:\n' + str(codewords))
+# NumberDevices = 1
 
+# # Instantiate outer code
+# TestCode = GraphTest(3)
+# TestCode.reset()
+# # TestCode.printgraph()
+
+
+# codeword = TestCode.encodemessage(infoarray[0])  # message is now outer-encoded
+# print('Information bits:\n' + str(infoarray))
+# print('Signal sections:\n' + str(codeword))
 # TestCode.printgraphcontent()
 
 # signal = TestCode.encodesignal(infoarray)
 # print('Signal reshaped:\n' + str(signal))
+
 
 # testvector = np.ones((TestCode.getvarcount(),TestCode.getsparseseclength()))
 # testvector[0] = np.zeros(TestCode.getsparseseclength())
@@ -256,30 +275,41 @@ codeword = TestCode.encodemessage(infoarray[0])
 #     TestCode.updatevars()
 #     print(np.sum([TestCode.getextrinsicestimate(varnodeid) for varnodeid in TestCode.getvarlist()],axis=1))
 
+# raise Exception('Stopping')
 
-#
-# OuterCode = Graph6(4)
-# OuterCode.printgraph()
-#
 
-#
-# codewords = OuterCode.encodemessages(infoarray)
+OuterCode = GraphTest(3)
+OuterCode.printgraph()
+
+NumberDevices = 3
+# infoarray = [[1, 0, 0, 0, 1, 0], [0, 1, 0, 1, 1, 1], [0, 0, 1, 1, 0, 0]]          # Easy test case
+# infoarray = [[1, 0, 0, 0, 1, 0], [1, 0, 0, 1, 0, 0], [0, 1, 1, 0, 1, 0]]          # Hard test case: lots of collisions
+infoarray = [list(np.random.randint(2, size=(2*3))) for i in range(NumberDevices)]  # Random test case
+print(infoarray)
+
+NumberDevices = len(infoarray)
+
+codewords = OuterCode.encodemessages(infoarray)
 # print('Codewords shape: ' + str(codewords.shape))
-# codeword = codewords[0]
+codeword = codewords[0]
 # print('Codeword shape' + str(codeword.shape))
-# notcodeword = codeword[::-1]
-#
+notcodeword = codeword[::-1]
+signal = OuterCode.encodesignal(infoarray)
+print('Signal: ' + str(signal))
+print('\n')
+
 # output = OuterCode.testvalid(notcodeword.flatten())
 # print('Test codeword: ' + str(np.linalg.norm(output.flatten(),ord=1)))
 # print(output)
-#
-# # print('Estimates shape' + str(OuterCode.getestimates().shape))
-# # print(np.linalg.norm(OuterCode.getestimates().flatten(),ord=1))
-# # print(np.linalg.norm(output.flatten() - codeword,ord=1))
-#
-# originallist = codewords.copy()
-# recoveredcodewords = decoder(OuterCode,signal[::-1],NumberDevices)
-# print(recoveredcodewords)
-#
-# matches = numbermatches(originallist,recoveredcodewords)
-# print(matches)
+
+# print('Estimates shape' + str(OuterCode.getestimates().shape))
+# print(np.linalg.norm(OuterCode.getestimates().flatten(),ord=1))
+# print(np.linalg.norm(output.flatten() - codeword,ord=1))
+
+originallist = codewords.copy()
+recoveredcodewords = decoder(OuterCode,signal,len(infoarray))
+print('\nOriginal List: \n' + str(originallist))
+print('Recovered codewords: \n' + str(recoveredcodewords))
+
+matches = numbermatches(originallist,recoveredcodewords)
+print('Matches: %d. Percent Recovered: %3.2f%%' % (matches, 100*matches/NumberDevices))
