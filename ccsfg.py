@@ -283,7 +283,7 @@ class CheckNodeFFT(GenericNode):
         return outgoing
 
 
-class Graph:
+class BipartiteGraph:
     """
     Class @class Graph creates bipartite factor graph for belief propagation.
     """
@@ -348,7 +348,7 @@ class Graph:
         return len(self.__CheckNodes)
 
     def getvarlist(self):
-        return list(self.__VarNodes.keys())
+        return sorted(list(self.__VarNodes.keys()))
 
     def getvarcount(self):
         return len(self.__VarNodes)
@@ -380,7 +380,7 @@ class Graph:
         """
         observations = np.empty((self.getvarcount(), self.getsparseseclength()), dtype=float)
         idx = 0
-        for varnodeid in sorted(self.getvarlist()):
+        for varnodeid in self.getvarlist():
             observations[idx] = self.__VarNodes[varnodeid].getobservation()
             idx = idx + 1
         return observations
@@ -518,7 +518,7 @@ class Graph:
         """
         estimates = np.empty((self.getvarcount(), self.getsparseseclength()), dtype=float)
         idx = 0
-        for varnodeid in sorted(self.getvarlist()):
+        for varnodeid in self.getvarlist():
             estimates[idx] = self.__VarNodes[varnodeid].getestimate()
             idx = idx + 1
         return estimates
@@ -534,7 +534,7 @@ class Graph:
         return self.__VarNodes[varnodeid].getmessagetocheck(0)
 
 
-class SystematicEncoding(Graph):
+class Encoding(BipartiteGraph):
 
     def __init__(self, check2varedges, infonodeindices, seclength):
         super().__init__(check2varedges, seclength)
@@ -596,7 +596,7 @@ class SystematicEncoding(Graph):
         """
         codeword = np.empty((self.getvarcount(), self.getsparseseclength()), dtype=int)
         idx = 0
-        for varnodeid in sorted(self.getvarlist()):
+        for varnodeid in self.getvarlist():
             block = np.zeros(self.getsparseseclength(), dtype=int)
             if np.max(self.getestimate(varnodeid)) > 0:
                 block[np.argmax(self.getestimate(varnodeid))] = 1
@@ -743,7 +743,7 @@ class SystematicEncoding(Graph):
             sparsesections = codeword.reshape((self.getvarcount(), self.getsparseseclength()))
             # Container for fragmented message bits.
             idx = 0
-            for varnodeid in sorted(self.getvarlist()):
+            for varnodeid in self.getvarlist():
                 # Sparse section corresponding to @var varnodeid.
                 self.setobservation(varnodeid, sparsesections[idx])
                 idx = idx + 1
