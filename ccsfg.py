@@ -7,7 +7,7 @@ Thus, the structures of @class VariableNode and @class CheckNode assume that mes
  fast Fourier transform (FFT) techniques.
 """
 import numpy as np
-from scipy.linalg import lu
+import scipy.linalg
 
 
 class GenericNode:
@@ -372,6 +372,19 @@ class Graph:
             print('The retrival did not succeed.')
             print('Variable Node ID: ' + str(varnodeid))
 
+    def getobservations(self):
+        """
+        This method returns local observations for all variable nodes in bipartite graph.
+        Belief vectors are sorted according to @var varnodeid.
+        :return: Array of local observations from all variable nodes
+        """
+        observations = np.empty((self.getvarcount(), self.getsparseseclength()), dtype=float)
+        idx = 0
+        for varnodeid in sorted(self.getvarlist()):
+            observations[idx] = self.__VarNodes[varnodeid].getobservation()
+            idx = idx + 1
+        return observations
+
     def setobservation(self, varnodeid, measure):
         if (len(measure) == self.getsparseseclength()) and (varnodeid in self.getvarlist()):
             self.__VarNodes[varnodeid].setobservation(measure)
@@ -526,23 +539,32 @@ class SystematicEncoding(Graph):
     def __init__(self, check2varedges, infonodeindices, seclength):
         super().__init__(check2varedges, seclength)
 
-        parity_check_matrix = []
+        paritycheckmatrix = []
         for checknodeid in self.getchecklist():
             row = np.zeros(self.getvarcount())
             for idx in self.getcheckneighbors(checknodeid):
                 row[idx-1] = 1
-            parity_check_matrix.append(row)
-        print(np.array(parity_check_matrix).shape)
+            paritycheckmatrix.append(row)
+        print(np.array(paritycheckmatrix).shape)
         # Perform LU factorization with partial pivoting.
-        p_lu, l_lu, u_lu = lu(parity_check_matrix)
-        # print(u_lu)
+        P_lu, L_lu, U_lu = scipy.linalg.lu(paritycheckmatrix)
+        # print(U_lu)
 
+        self.__paritycolindices = []
         paritynodeindices = []
         for idx in range(self.getcheckcount()):
-            row = np.array(u_lu[idx,:])
-            paritynodeindices.append(np.argmin(np.ma.masked_where(row==0, row))+1)
+            row = np.array(U_lu[idx,:])
+            colindex = np.argmin(np.ma.masked_where(row==0, row))
+            self.__paritycolindices.append(colindex)
+            paritynodeindices.append(colindex+1)
+        self.__infocolindices = [col for col in range(self.getvarcount()) if col not in self.__paritycolindices]
+        infonodeindices = [varnodeid for varnodeid in range(self.getvarcount()) if varnodeid not in paritynodeindices]
+        self.__U_triangle = U_lu[:, self.__paritycolindices]
+        self.__U_square = U_lu[:, self.__infocolindices]
+        # print(U_triangle)
+        # print(U_square)
 
-        self.__ParityNodeIndices = paritynodeindices[::-1]
+        self.__ParityNodeIndices = paritynodeindices
         print(len(set(paritynodeindices)))
         self.__InfoNodeIndices = [member for member in self.getvarlist() if member not in self.__ParityNodeIndices]
         self.__ParityCount = len(self.__ParityNodeIndices)
@@ -560,7 +582,7 @@ class SystematicEncoding(Graph):
     def getparitylist(self):
         return self.__ParityNodeIndices
 
-    def getparitycound(self):
+    def getparitycount(self):
         return self.__ParityCount
 
     def getcodeword(self):
@@ -580,6 +602,43 @@ class SystematicEncoding(Graph):
         return np.rint(codeword)
 
     def encodemessage(self, bits):
+        """
+        This method performs encoding based on LU decomposition.
+        Operations are done modulo @var self.__getseclength().
+        :param bits: Information bits comprising original message
+        """
+        messagebase10 = []
+        if len(bits) == (self.getinfocount() * self.getseclength()):
+            bits = np.array(bits).reshape((self.getinfocount(), self.getseclength()))
+            # Container for fragmented message bits.
+            # Initialize variable nodes within information node indices
+            for idx in range(self.getinfocount()):
+                # Compute index of fragment @var varnodeid
+                fragment = np.inner(bits[idx], 2 ** np.arange(self.getseclength())[::-1])
+                messagebase10.append(fragment)
+            parityfragments = scipy.linalg.solve(self.__U_triangle, - self.__U_square.dot(np.array(messagebase10)))
+
+            codewordbased10 = np.zeros(self.getvarcount())
+            for idx in range(self.getinfocount()):
+                codewordbased10[self.__infocolindices[idx]] = messagebase10[idx]
+            for idx in range(self.getparitycount()):
+                codewordbased10[self.__paritycolindices[idx]] = np.rint(parityfragments[idx])
+
+            codewordsparse = []
+            for idx in range(self.getvarcount()):
+                fragment = (codewordbased10[idx] % self.getsparseseclength()).astype(int)
+                # Set sparse representation to all zeros, except for proper location.
+                sparsefragment = np.zeros(self.getsparseseclength(), dtype=int)
+                sparsefragment[fragment] = 1
+                # Add sparse section to codeword.
+                codewordsparse.append(sparsefragment)
+
+            codeword = np.array(codewordsparse).flatten()
+            return codeword
+        else:
+            print('Length of input array is not ' + str(self.getinfocount() * self.getseclength()))
+
+    def encodemessage2(self, bits):
         """
         This method performs systematic encoding and belief propagation.
         Bipartite graph is initialized: local observations for information blocks are derived from message sequence,
@@ -609,7 +668,6 @@ class SystematicEncoding(Graph):
                 # print('Variable node ' + str(varnodeid), end=' ')
                 # print(' -- Observation changed to: ' + str(np.argmax(self.getobservation(varnodeid))))
 
-
             # Start with full list of check nodes to update.
             checknodes2update = set(self.getchecklist())
             self.updatechecks(checknodes2update)
@@ -617,7 +675,7 @@ class SystematicEncoding(Graph):
             varnodes2update = set(self.getvarlist())
             self.updatevars(varnodes2update)
             # The number of parity variable nodes acts as upper bound.
-            for iteration in range(self.getparitycound()):
+            for iteration in range(self.getparitycount()):
                 checkneighbors = set()
                 varneighbors = set()
 
@@ -641,11 +699,11 @@ class SystematicEncoding(Graph):
                 if checkneighbors != set():
                     self.updatechecks(checkneighbors)
 
-                # print('Check nodes to update: ' + str(checknodes2update))
-
                 if np.array_equal(np.linalg.norm(np.rint(self.getestimates()), ord=0, axis=1), [1] * self.getvarcount()):
                     break
 
+            self.updatechecks()
+            print(np.linalg.norm(np.rint(self.getestimates()), ord=0, axis=1))
             codeword = np.rint(self.getestimates()).flatten()
             return codeword
         else:
@@ -672,10 +730,13 @@ class SystematicEncoding(Graph):
             signal = signal + self.encodemessage(infoarray[messageindex])
         return signal
 
-    # Method testvalid needs attention; it may not be necessary
+    # The @method testvalid needs attention; it may not be necessary
     def testvalid(self, codeword):  # ISSUE IN USING THIS FOR NOISY CODEWORDS, INPUT SHOULD BE MEASURE
+        # Reinitialize factor graph to ensure there are no lingering states.
+        # Node states are set to uninformative measures.
         self.reset()
-        if len(codeword) == (self.getvarcount() * self.getsparseseclength()):
+        if (len(codeword) == (self.getvarcount() * self.getsparseseclength())) and (
+                np.linalg.norm(codeword, ord=0) == self.getvarcount()):
             sparsesections = codeword.reshape((self.getvarcount(), self.getsparseseclength()))
             # Container for fragmented message bits.
             idx = 0
@@ -686,12 +747,13 @@ class SystematicEncoding(Graph):
                 # print('Variable node ' + str(varnodeid), end=' ')
                 # print(' -- Observation changed to: ' + str(np.argmax(self.getobservation(varnodeid))))
 
-            for idx in range(self.getvarcount()): # NEEDS attention
-                self.updatechecks()
-                self.updatevars()
-                # Check if all variable nodes remain sparse.
-                if ((np.linalg.norm(np.rint(self.getestimates()).flatten(), ord=0)) == self.getvarcount()):
-                    break
+            # Check if all variable nodes remain sparse.
+            self.updatechecks()
+            self.updatevars()
+            if np.array_equal(np.rint(self.getestimates()).flatten(), self.getobservations().flatten()):
+                # print('Codeword is consistent.')
+                return self.getcodeword()
         else:
-            print('Issue')
-        return self.getcodeword()
+            print(np.linalg.norm(np.rint(self.getestimates()).flatten(), ord=0))
+            print(np.linalg.norm(self.getobservations().flatten(), ord=0))
+            print('Codeword has issues.')
