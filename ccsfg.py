@@ -545,33 +545,36 @@ class SystematicEncoding(Graph):
             for idx in self.getcheckneighbors(checknodeid):
                 row[idx-1] = 1
             paritycheckmatrix.append(row)
-        print(np.array(paritycheckmatrix).shape)
+        paritycheckmatrix = np.array(paritycheckmatrix)
+        print('Size of parity check matrix: ' + str(paritycheckmatrix.shape))
         # Perform LU factorization with partial pivoting.
-        P_lu, L_lu, U_lu = scipy.linalg.lu(paritycheckmatrix)
-        # print(U_lu)
+        # It seems better to perform this action on transpose of parity check matrix.
+        P_lu, L_lu, U_lu = scipy.linalg.lu(paritycheckmatrix.transpose())
 
         self.__paritycolindices = []
         paritynodeindices = []
         for idx in range(self.getcheckcount()):
-            row = np.array(U_lu[idx,:])
-            colindex = np.argmin(np.ma.masked_where(row==0, row))
+            # Desirable indices are found in top rows of P_lu.transpose().
+            # Below, columns of P_lu are employed instead of rows of P_lu.transpose().
+            row = np.array(P_lu[:,idx])
+            colindex = np.argmax(row==1)
             self.__paritycolindices.append(colindex)
             paritynodeindices.append(colindex+1)
-        self.__infocolindices = [col for col in range(self.getvarcount()) if col not in self.__paritycolindices]
-        infonodeindices = [varnodeid for varnodeid in range(self.getvarcount()) if varnodeid not in paritynodeindices]
-        self.__U_triangle = U_lu[:, self.__paritycolindices]
-        self.__U_square = U_lu[:, self.__infocolindices]
-        # print(U_triangle)
-        # print(U_square)
+        print('Number of parity column indices: ' + str(len(self.__paritycolindices)))
+        self.__infocolindices = sorted([colidx for colidx in range(self.getvarcount()) if colidx not in self.__paritycolindices])
+        infonodeindices = [varnodeid for varnodeid in self.getvarlist() if varnodeid not in paritynodeindices]
+        self.__paritycolindices = sorted(self.__paritycolindices)
+        self.__pc_parity = paritycheckmatrix[:, sorted(self.__paritycolindices)]
+        print(np.linalg.matrix_rank(self.__pc_parity))
+        self.__pc_info = paritycheckmatrix[:, sorted(self.__infocolindices)]
 
-        self.__ParityNodeIndices = paritynodeindices
-        print(len(set(paritynodeindices)))
-        self.__InfoNodeIndices = [member for member in self.getvarlist() if member not in self.__ParityNodeIndices]
+        self.__ParityNodeIndices = sorted(paritynodeindices)
+        self.__InfoNodeIndices = sorted(infonodeindices)
         self.__ParityCount = len(self.__ParityNodeIndices)
         self.__InfoCount = len(self.__InfoNodeIndices)
 
-        print('Indices of information nodes: ' + str(self.__InfoCount))
-        print('Indices of parity nodes: ' + str(self.__ParityNodeIndices))
+        print('Number of information nodes: ' + str(len(set(self.__InfoNodeIndices))))
+        print('Number of parity nodes: ' + str(len(set(self.__ParityNodeIndices))))
 
     def getinfolist(self):
         return self.__InfoNodeIndices
@@ -616,7 +619,7 @@ class SystematicEncoding(Graph):
                 # Compute index of fragment @var varnodeid
                 fragment = np.inner(bits[idx], 2 ** np.arange(self.getseclength())[::-1])
                 messagebase10.append(fragment)
-            parityfragments = scipy.linalg.solve(self.__U_triangle, - self.__U_square.dot(np.array(messagebase10)))
+            parityfragments = scipy.linalg.solve(self.__pc_parity, - self.__pc_info.dot(np.array(messagebase10)))
 
             codewordbased10 = np.zeros(self.getvarcount())
             for idx in range(self.getinfocount()):
