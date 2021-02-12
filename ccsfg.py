@@ -7,6 +7,7 @@ Thus, the structures of @class VariableNode and @class CheckNode assume that mes
  fast Fourier transform (FFT) techniques.
 """
 import numpy as np
+from scipy.linalg import lu
 
 
 class GenericNode:
@@ -525,11 +526,29 @@ class SystematicEncoding(Graph):
     def __init__(self, check2varedges, infonodeindices, seclength):
         super().__init__(check2varedges, seclength)
 
-        self.__InfoNodeIndices = sorted(infonodeindices)
-        self.__InfoCount = len(self.__InfoNodeIndices)
-        self.__ParityNodeIndices = [member for member in super().getvarlist() if member not in self.__InfoNodeIndices]
+        parity_check_matrix = []
+        for checknodeid in self.getchecklist():
+            row = np.zeros(self.getvarcount())
+            for idx in self.getcheckneighbors(checknodeid):
+                row[idx-1] = 1
+            parity_check_matrix.append(row)
+        print(np.array(parity_check_matrix).shape)
+        # Perform LU factorization with partial pivoting.
+        p_lu, l_lu, u_lu = lu(parity_check_matrix)
+        # print(u_lu)
+
+        paritynodeindices = []
+        for idx in range(self.getcheckcount()):
+            row = np.array(u_lu[idx,:])
+            paritynodeindices.append(np.argmin(np.ma.masked_where(row==0, row))+1)
+
+        self.__ParityNodeIndices = paritynodeindices[::-1]
+        print(len(set(paritynodeindices)))
+        self.__InfoNodeIndices = [member for member in self.getvarlist() if member not in self.__ParityNodeIndices]
         self.__ParityCount = len(self.__ParityNodeIndices)
-        print('Indices of information nodes: ' + str(self.__InfoNodeIndices))
+        self.__InfoCount = len(self.__InfoNodeIndices)
+
+        print('Indices of information nodes: ' + str(self.__InfoCount))
         print('Indices of parity nodes: ' + str(self.__ParityNodeIndices))
 
     def getinfolist(self):
@@ -540,6 +559,9 @@ class SystematicEncoding(Graph):
 
     def getparitylist(self):
         return self.__ParityNodeIndices
+
+    def getparitycound(self):
+        return self.__ParityCount
 
     def getcodeword(self):
         """
@@ -568,17 +590,17 @@ class SystematicEncoding(Graph):
             bits = np.array(bits).reshape((self.getinfocount(), self.getseclength()))
             # Container for fragmented message bits.
             bitsections = dict()
+            # Reinitialize factor graph to ensure there are no lingering states.
+            # Node states are set to uninformative measures.
+            self.reset()
             idx = 0
+            # Initialize variable nodes within information node indices
             for varnodeid in self.getinfolist():
                 # Message bits corresponding to fragment @var varnodeid.
                 bitsections.update({varnodeid: bits[idx]})
                 idx = idx + 1
-            # Reinitialize factor graph to ensure there are no lingering states.
-            # Node states are set to uninformative measures.
-            self.reset()
-            for varnodeid in self.getinfolist():
                 # Compute index of fragment @var varnodeid
-                fragment = np.inner(bitsections[varnodeid], 2 ** np.arange(self.getseclength())[::-1])  
+                fragment = np.inner(bitsections[varnodeid], 2 ** np.arange(self.getseclength())[::-1])
                 # Set sparse representation to all zeros, except for proper location.
                 sparsefragment = np.zeros(self.getsparseseclength(), dtype=int)
                 sparsefragment[fragment] = 1
@@ -587,12 +609,43 @@ class SystematicEncoding(Graph):
                 # print('Variable node ' + str(varnodeid), end=' ')
                 # print(' -- Observation changed to: ' + str(np.argmax(self.getobservation(varnodeid))))
 
-            for iteration in range(self.getvarcount()):  # Need to change this
-                self.updatechecks()  # Update Check first
-                self.updatevars()
-                # Check if every section has converged to a unique location and, hence, variable nodes are determined.
+
+            # Start with full list of check nodes to update.
+            checknodes2update = set(self.getchecklist())
+            self.updatechecks(checknodes2update)
+            # Start with list of parity variable nodes to update.
+            varnodes2update = set(self.getvarlist())
+            self.updatevars(varnodes2update)
+            # The number of parity variable nodes acts as upper bound.
+            for iteration in range(self.getparitycound()):
+                checkneighbors = set()
+                varneighbors = set()
+
+                # Update check nodes and check for convergence
+                self.updatechecks(checknodes2update)
+                for checknodeid in checknodes2update:
+                    if set(self.getcheckneighbors(checknodeid)).isdisjoint(varnodes2update):
+                        checknodes2update = checknodes2update - {checknodeid}
+                        varneighbors.update(self.getcheckneighbors(checknodeid))
+                if varneighbors != set():
+                    self.updatevars(varneighbors)
+
+                # Update variable nodes and check for convergence
+                self.updatevars(varnodes2update)
+                for varnodeid in varnodes2update:
+                    currentmeasure = self.getestimate(varnodeid)
+                    currentweight1 = np.linalg.norm(currentmeasure, ord=1)
+                    if currentweight1 == 1:
+                        varnodes2update = varnodes2update - {varnodeid}
+                        checkneighbors.update(self.getvarneighbors(varnodeid))
+                if checkneighbors != set():
+                    self.updatechecks(checkneighbors)
+
+                # print('Check nodes to update: ' + str(checknodes2update))
+
                 if np.array_equal(np.linalg.norm(np.rint(self.getestimates()), ord=0, axis=1), [1] * self.getvarcount()):
                     break
+
             codeword = np.rint(self.getestimates()).flatten()
             return codeword
         else:
@@ -600,11 +653,10 @@ class SystematicEncoding(Graph):
 
     def encodemessages(self, infoarray):
         """
-        This method encodes multiple messages into codewords by performing systematic encoding 
+        This method encodes multiple messages into codewords by performing systematic encoding
         and belief propagation on each individual message.
         :param infoarray: array of binary messages to be encoded
         """
-
         codewords = []
         for messageindex in range(len(infoarray)):
             codewords.append(self.encodemessage(infoarray[messageindex]))
