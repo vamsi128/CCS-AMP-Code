@@ -26,6 +26,24 @@ class GenericInnerCode:
         self.__std = std
         self.__Ka = Ka
 
+    def getL(self):
+        return self.__L
+    
+    def getML(self):
+        return self.__ml
+    
+    def getN(self):
+        return self.__N
+
+    def getP(self):
+        return self.__P
+
+    def getStd(self):
+        return self.__std
+
+    def getKa(self):
+        return self.__Ka
+
     def SparcCodebook(self, L, ml, N):
         """
         Generate SPARC Codebook for CS encoding
@@ -33,13 +51,16 @@ class GenericInnerCode:
         :param ml: length of each section
         :param N: number of channel uses (real DOF)
         """
+
+        # generate Hadamard matrices 
+        self.__numBlockRows = N
         self.__Ax, self.__Ay, _ = block_sub_fht(N, ml, L, ordering=None, seed=None)
 
     def Ab(self, b):
-        return self.__Ax(b).reshape(-1, 1) / np.sqrt(self.__N)
+        return self.__Ax(b).reshape(-1, 1) / np.sqrt(self.__numBlockRows)
 
     def Az(self, z):
-        return self.__Ay(z).reshape(-1, 1) / np.sqrt(self.__N)
+        return self.__Ay(z).reshape(-1, 1) / np.sqrt(self.__numBlockRows)
 
     def EncodeSection(self, Phat, x):
         """
@@ -64,10 +85,10 @@ class GenericInnerCode:
         :param tau: standard deviation of noise
         :param Phat: estimate of codeword power
         """
-
-        return (q*np.exp(-(s-np.sqrt(Phat))**2/(2*tau**2)))/ \
-               (q*np.exp(-(s-np.sqrt(Phat))**2/(2*tau**2)) + \
-               (1-q)*np.exp(-s**2/(2*tau**2))).astype(float).reshape(-1, 1)
+        s = s.flatten()
+        return ((q*np.exp(-(s-np.sqrt(Phat))**2/(2*tau**2))) / \
+                (q*np.exp(-(s-np.sqrt(Phat))**2/(2*tau**2)) +  \
+                (1-q)*np.exp(-s**2/(2*tau**2)))).astype(float).reshape(-1, 1)
 
     def ComputePrior(self, s, BPonOuterGraph, graph, tau, Phat, numBPIter):
         """
@@ -81,34 +102,49 @@ class GenericInnerCode:
         """
 
         # Compute uninformative prior
-        p0 = 1-(1-1/self.__ml)**self.__Ka
+        s = s.flatten()                             # force s to have the right shape
+        p0 = 1-(1-1/self.__ml)**self.__Ka           # uninformative prior
+        p1 = p0 * np.ones(s.shape, dtype=float)     # vector of uninformative priors
 
         # If not BPonOuterGraph, return uninformative prior
         if not BPonOuterGraph:
-            return p0
+            return p1
         else:
 
-            # Translate the effective observation into a PME
-            p1 = p0 * np.ones(s.shape, dtype=float)
-            pme = (p1*np.exp(-(s-np.sqrt(Phat))**2/(2*tau**2)))/ \
-                  (p1*np.exp(-(s-np.sqrt(Phat))**2/(2*tau**2)) + \
-                  (1-p1)*np.exp(-s**2/(2*tau**2))).astype(float).reshape(-1, 1)
-            pme = pme.reshape(self.__L,-1)                          # Reshape PME into an LxM matrix
-            pme = pme/(np.sum(pme,axis=1).reshape(self.__L,-1))     # normalize rows of PME
+            # Handle scalar and vector taus
+            if np.isscalar(tau):
+                tau = tau * np.ones(self.getL())
+
+            # Prep for PME computation 
+            pme = np.zeros(s.shape, dtype=float)    # data structure for PME 
+            m = self.getML()                        # use m as an alias for self.getML()
+
+            # Translate the effective observation into a PME  
+            for i in range(self.getL()): 
+                pme[i*m:(i+1)*m] = ((p1[i*m:(i+1)*m]*np.exp(-(s[i*m:(i+1)*m]-np.sqrt(Phat))**2/(2*tau[i]**2)))/ \
+                                    (p1[i*m:(i+1)*m]*np.exp(-(s[i*m:(i+1)*m]-np.sqrt(Phat))**2/(2*tau[i]**2)) + \
+                                    (1-p1[i*m:(i+1)*m])*np.exp(-s[i*m:(i+1)*m]**2/(2*tau[i]**2)))).astype(float).flatten()
+            pme = pme.reshape(self.getL(),-1)                          # Reshape PME into an LxM matrix
+            pme = pme/(np.sum(pme,axis=1).reshape(self.getL(),-1))     # normalize rows of PME
 
             # reset graph so that each message becomes all 1s
             graph.reset() 
 
             # set variable node observations - these are the lambdas
-            for i in range(self.__L):
-                graph.setobservation(i, pme[i,:])
+            for i in range(self.getL()):
+                graph.setobservation(i+1, pme[i,:])
 
             # perform numBPIter of BP
             for idxit in range(numBPIter):
+                graph.updatechecks()
                 graph.updatevars()
 
             # Obtain belief vectors from the graph
-            return graph.getestimates().flatten()
+            q = np.zeros(s.shape)
+            for i in range(self.getL()):
+                q[i*self.getML():(i+1)*self.getML()] = 1-(1-graph.getextrinsicestimate(i+1))**self.getKa()
+
+            return np.minimum(q.flatten(), 1)
 
     def EffectiveObservation(self, Phat, xHt, z):
         """
@@ -118,7 +154,7 @@ class GenericInnerCode:
         :param z: AMP residual
         """
 
-        return (np.sqrt(Phat)*xHt + self.Az(z)).astype(np.longdouble)
+        return (np.sqrt(Phat)*xHt + self.Az(z.flatten())).astype(np.longdouble)
 
     def Residual(self, xHt, y, z, Phat, tau):
         """
@@ -160,7 +196,7 @@ class DenseInnerCode(GenericInnerCode):
         :param Phat: estimated power
         :param x: signal to encode
         """
-        return self.EncodeSection(Phat, x)
+        return super().EncodeSection(Phat, x)
 
     def Decode(self, y, numAmpIter, BPonOuterGraph=False, numBPIter=1, graph=None):
         """
@@ -171,12 +207,12 @@ class DenseInnerCode(GenericInnerCode):
         :param numBPIter: number of BP iterations to be performed.  Default = 1
         :param graph: graphical structure of outer code.  Default = None
         """
-
-        xHt = np.zeros((self.__L*self.__ml, 1))       # data structure to store support of x
+  
+        xHt = np.zeros((self.getL()*self.getML(), 1)) # data structure to store support of x
         z = y.copy()                                  # deep copy of y for AMP to modify
-        Phat = self.__N*self.__P/self.__L             # Estimate of transmit power
+        Phat = self.getN()*self.getP()/self.getL()    # Estimate of codeword power
         tauEvolution = np.zeros((numAmpIter, 1))      # track how tau changes with each iteration
-
+        
         # perform numAmpIter iterations of AMP
         for t in range(numAmpIter):
 
@@ -223,14 +259,14 @@ class BlockDiagonalInnerCode(GenericInnerCode):
         """
 
         # instantiate data structure for y
-        y = np.zeros(x.shape)
+        y = np.zeros(self.getN())
 
         # encode each section individually
-        for i in range(self.__L):
-            y[i*self.__numBlockRows:(i+1)*self.__numBlockRows] = self.EncodeSection(Phat, x[i*self.__ml:(i+1)*self.__ml])
+        for i in range(self.getL()):
+            y[i*self.__numBlockRows:(i+1)*self.__numBlockRows] = self.EncodeSection(Phat, x[i*self.getML():(i+1)*self.getML()]).flatten()
 
         # return encoded signal y
-        return y
+        return y.reshape(-1, 1)
 
     def Decode(self, y, numAmpIter, BPonOuterGraph=False, numBPIter=1, graph=None):
         """
@@ -242,20 +278,20 @@ class BlockDiagonalInnerCode(GenericInnerCode):
         :param graph: graphical structure of outer code.  Default = None
         """
 
-        xHt = np.zeros((self.__L*self.__ml, 1))       # data structure to store support of x
-        s = np.zeros((self.__L*self.__ml, 1))         # data structure to store effective observations
+        xHt = np.zeros((self.getL()*self.getML(), 1)) # data structure to store support of x
+        s = np.zeros((self.getL()*self.getML(), 1))   # data structure to store effective observations
         z = y.copy()                                  # deep copy of y for AMP to modify
-        Phat = self.__N*self.__P/self.__L             # Estimate of transmit power
-        tau = np.zeros((L, 1))                        # data structure to store noise standard deviations
+        Phat = self.getN()*self.getP()/self.getL()    # Estimate of transmit power
+        tau = np.zeros((self.getL(), 1))              # data structure to store noise standard deviations
         tauEvolution = np.zeros((numAmpIter, 1))      # track how tau changes with each iteration
         n = self.__numBlockRows                       # use n as an alias for self.__numBlockRows
-        m = self.__ml                                 # use m as an alias for self.__ml      
+        m = self.getML()                              # length of each section
 
         # Perform numAmpIter iterations of AMP
         for t in range(numAmpIter):
 
             # Iterate through each of the L sections
-            for i in range(self.__L):
+            for i in range(self.getL()):
                 tau[i] = self.NoiseStdDeviation(z[i*n:(i+1)*n])                                    # compute noise std dev
                 s[i*m:(i+1)*m] = self.EffectiveObservation(Phat, xHt[i*m:(i+1)*m], z[i*n:(i+1)*n]) # effective observation
 
@@ -263,7 +299,7 @@ class BlockDiagonalInnerCode(GenericInnerCode):
             q = self.ComputePrior(s, BPonOuterGraph, graph, tau, Phat, numBPIter)                  # vector of priors
             
             # Iterate through each of the L sections
-            for i in range(self.__L):
+            for i in range(self.getL()):
                 xHt[i*m:(i+1)*m] = self.AmpDenoiser(q[i*m:(i+1)*m], s[i*m:(i+1)*m], tau[i], Phat)  # apply denoiser
                 z[i*n:(i+1)*n] = self.Residual(xHt[i*m:(i+1)*m], y[i*n:(i+1)*n], z[i*n:(i+1)*n], \
                                                Phat, tau[i])                                       # compute residual 

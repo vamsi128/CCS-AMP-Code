@@ -299,7 +299,7 @@ def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MA
     trailingtopindices = np.argpartition(thresholdedestimates[0, :], -count)[-count:]
     # Iterating through evey retained location in root section
     for topidx in trailingtopindices:
-        print('Root section ID: ' + str(topidx))
+        # print('Root section ID: ' + str(topidx))
         # Reset graph, including check nodes, is critical for every root location.
         graph.reset()
         rootsingleton = np.zeros(graph.getsparseseclength())
