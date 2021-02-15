@@ -8,6 +8,7 @@ Thus, the structures of @class VariableNode and @class CheckNode assume that mes
 """
 import numpy as np
 import scipy.linalg
+import ffht
 
 
 class GenericNode:
@@ -98,7 +99,7 @@ class GenericNode:
             print('Check node ID ' + str(neighborid) + ' is not a neighbor.')
 
 
-class VariableNodeFFT(GenericNode):
+class VariableNode(GenericNode):
     """
     Class @class VariableNode creates a single variable node within bipartite factor graph.
     """
@@ -214,6 +215,7 @@ class VariableNodeFFT(GenericNode):
 class CheckNodeFFT(GenericNode):
     """
     Class @class CheckNode creates a single check node within bipartite factor graph.
+    This class relies on fast Fourier transform.
     """
 
     def __init__(self, checknodeid, messagelength, neighbors=None):
@@ -283,6 +285,81 @@ class CheckNodeFFT(GenericNode):
         return outgoing
 
 
+class CheckNodeFWHT(GenericNode):
+    """
+    Class @class CheckNode creates a single check node within bipartite factor graph.
+    This class relies on fast Walsh-Hadamard transform.
+    """
+
+    def __init__(self, checknodeid, messagelength, neighbors=None):
+        """
+        Initialize check node of type @class CheckNode.
+        :param checknodeid: Unique identifier for check node
+        :param messagelength: Length of incoming and outgoing messages
+        :param neighbors: Neighbors of node @var checknodeid in bipartite graph
+        """
+
+        super().__init__(checknodeid, neighbors)
+        # Unique identifier for check node
+        self.__ID = checknodeid
+        # Length of messages
+        self.__MessageLength = messagelength
+
+    def reset(self):
+        """
+        Reset every states check node to uninformative measures (FWHT of all ones)
+        """
+        uninformative = np.ones(self.__MessageLength, dtype=float)
+        ffht.fht(uninformative) # @method fht acts in place on @type float
+        for neighborid in self.getneighbors():
+            self.setstate(neighborid, uninformative)
+
+    def setmessagefromvar(self, varneighborid, message):
+        """
+        Incoming message from variable node neighbor @var vaneighborid to check node self.
+        :param varneighborid: Variable node identifier of origin
+        :param message: Incoming belief vector
+        """
+        message = message.astype(float)
+        ffht.fht(message) # @method fht acts in place on @type float
+        self.setstate(varneighborid, message)
+
+    def getmessagetovar(self, varneighborid):
+        """
+        Outgoing message from check node self to variable node @var varneighbor
+        :param varneighborid: Variable node identifier of destination
+        :return: Outgoing belief vector
+        """
+        dictionary = self.getstates()
+        if varneighborid is None:
+            states = list(dictionary.values())
+        elif varneighborid in dictionary:
+            states = [dictionary[key] for key in dictionary if key is not varneighborid]
+        else:
+            print('Destination variable node ID ' + str(varneighborid) + ' is not a neighbor.')
+            return None
+        if np.isscalar(states):
+            return states
+        else:
+            states = np.array(states)
+            if states.ndim == 1:
+                outgoing_fwht = states
+            elif states.ndim == 2:
+                try:
+                    outgoing_fwht = np.prod(states, axis=0)
+                except ValueError as e:
+                    print(e)
+                    return None
+            else:
+                raise RuntimeError('states.ndim = ' + str(np.array(states).ndim) + ' is not allowed.')
+            outgoing = outgoing_fwht.astype(float)
+            # Inversse of FWHT is, again, FWHT
+            ffht.fht(outgoing) # @method fht acts in place on @type float
+        # The outgoing message values should be indexed using the minus operation.
+        # This is unnecessary over this particular field, since the minus is itself.
+        return outgoing
+
+
 class BipartiteGraph:
     """
     Class @class Graph creates bipartite factor graph for belief propagation.
@@ -326,7 +403,7 @@ class BipartiteGraph:
 
         for varnodeid in self.__VarNodeIDs:
             # Create variable nodes and add them to dictionary @var self.__VariableNodes.
-            self.__VarNodes[varnodeid] = VariableNodeFFT(varnodeid, messagelength=self.__SparseSecLength)
+            self.__VarNodes[varnodeid] = VariableNode(varnodeid, messagelength=self.__SparseSecLength)
 
         for checknode in self.__CheckNodes.values():
             for neighbor in checknode.getneighbors():
