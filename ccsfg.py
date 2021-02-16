@@ -395,7 +395,7 @@ class BipartiteGraph:
             checknodeid = idx + 1
             self.__CheckNodeIDs.add(checknodeid)
             # Create check nodes and add them to dictionary @var self.__CheckNodes.
-            self.__CheckNodes.update({checknodeid: CheckNodeFFT(checknodeid, messagelength=self.__SparseSecLength)})
+            self.__CheckNodes.update({checknodeid: CheckNodeFWHT(checknodeid, messagelength=self.__SparseSecLength)})
             # Add edges from check nodes to variable nodes.
             self.__CheckNodes[checknodeid].addneighbors(check2varedges[idx])
             # Create set of all variable node identifiers.
@@ -509,6 +509,8 @@ class BipartiteGraph:
                                                 self.__VarNodes[varnodeid].getmessagetocheck(checknode.getid()))
             return
         else:
+            if np.isscalar(checknodelist):
+                checknodelist = list([checknodelist])
             varneighborsaggregate = set()
             for checknodeid in checknodelist:
                 try:
@@ -554,6 +556,8 @@ class BipartiteGraph:
                     varnode.setmessagefromcheck(checknodeid, measure)
             return
         else:
+            if np.isscalar(varnodelist):
+                varnodelist = list([varnodelist])
             checkneighborsaggregate = set()
             for varnodeid in varnodelist:
                 try:
@@ -618,40 +622,51 @@ class Encoding(BipartiteGraph):
 
         paritycheckmatrix = []
         for checknodeid in self.getchecklist():
-            row = np.zeros(self.getvarcount())
+            row = np.zeros(self.getvarcount(), dtype=int)
             for idx in self.getcheckneighbors(checknodeid):
                 row[idx-1] = 1
             paritycheckmatrix.append(row)
         paritycheckmatrix = np.array(paritycheckmatrix)
         print('Size of parity check matrix: ' + str(paritycheckmatrix.shape))
-        # Perform LU factorization with partial pivoting.
-        # It seems better to perform this action on transpose of parity check matrix.
-        P_lu, L_lu, U_lu = scipy.linalg.lu(paritycheckmatrix.transpose())
 
-        self.__paritycolindices = []
-        paritynodeindices = []
-        for idx in range(self.getcheckcount()):
-            # Desirable indices are found in top rows of P_lu.transpose().
-            # Below, columns of P_lu are employed instead of rows of P_lu.transpose().
-            row = np.array(P_lu[:,idx])
-            colindex = np.argmax(row==1)
-            self.__paritycolindices.append(colindex)
-            paritynodeindices.append(colindex+1)
-        print('Number of parity column indices: ' + str(len(self.__paritycolindices)))
-        self.__infocolindices = sorted([colidx for colidx in range(self.getvarcount()) if colidx not in self.__paritycolindices])
-        infonodeindices = [varnodeid for varnodeid in self.getvarlist() if varnodeid not in paritynodeindices]
-        self.__paritycolindices = sorted(self.__paritycolindices)
-        self.__pc_parity = paritycheckmatrix[:, sorted(self.__paritycolindices)]
-        print(np.linalg.matrix_rank(self.__pc_parity))
-        self.__pc_info = paritycheckmatrix[:, sorted(self.__infocolindices)]
+        if infonodeindices is None:
+            systematicmatrix = self.eliminationgf2(paritycheckmatrix)
+            print(systematicmatrix)
+            self.__paritycolindices = []
+            paritynodeindices = []
+            for idx in range(self.getcheckcount()):
+                # Desirable indices are found in top rows of P_lu.transpose().
+                # Below, columns of P_lu are employed instead of rows of P_lu.transpose().
+                row = systematicmatrix[idx,:]
+                jdx = np.argmax(row==1)
+                self.__paritycolindices.append(jdx)
+                paritynodeindices.append(jdx+1)
+            self.__paritycolindices = sorted(self.__paritycolindices)
+            self.__ParityNodeIndices = sorted(paritynodeindices)
+            self.__ParityCount = len(self.__ParityNodeIndices)
+            print('Number of parity column indices: ' + str(len(self.__paritycolindices)))
 
-        self.__ParityNodeIndices = sorted(paritynodeindices)
-        self.__InfoNodeIndices = sorted(infonodeindices)
-        self.__ParityCount = len(self.__ParityNodeIndices)
-        self.__InfoCount = len(self.__InfoNodeIndices)
+            self.__infocolindices = sorted([colidx for colidx in range(self.getvarcount()) if colidx not in self.__paritycolindices])
+            infonodeindices = [varnodeid for varnodeid in self.getvarlist() if varnodeid not in paritynodeindices]
+            self.__InfoNodeIndices = sorted(infonodeindices)
+            self.__InfoCount = len(self.__InfoNodeIndices)
+        else:
+            self.__InfoNodeIndices = sorted(infonodeindices)
+            self.__infocolindices = [idx - 1 for idx in self.__InfoNodeIndices]
+            self.__InfoCount = len(self.__InfoNodeIndices)
+            self.__ParityNodeIndices = [varnodeid for varnodeid in self.getvarlist() if varnodeid not in infonodeindices]
+            self.__paritycolindices = [idx - 1 for idx in self.__ParityNodeIndices]
+            self.__ParityCount = len(self.__ParityNodeIndices)
+
+        print('Number of parity nodes: ' + str(len(set(self.__ParityNodeIndices))))
+        self.__pc_parity = paritycheckmatrix[:, self.__paritycolindices]
+        # print('Rank parity component: ' + str(np.linalg.matrix_rank(self.__pc_parity)))
+        print(self.__pc_parity)
 
         print('Number of information nodes: ' + str(len(set(self.__InfoNodeIndices))))
-        print('Number of parity nodes: ' + str(len(set(self.__ParityNodeIndices))))
+        self.__pc_info = paritycheckmatrix[:, self.__infocolindices]
+        # print('Rank info component: ' + str(np.linalg.matrix_rank(self.__pc_info)))
+        print(self.__pc_info)
 
     def getinfolist(self):
         return self.__InfoNodeIndices
@@ -664,6 +679,33 @@ class Encoding(BipartiteGraph):
 
     def getparitycount(self):
         return self.__ParityCount
+
+    def eliminationgf2(self, paritycheckmatrix):
+        idx = 0
+        jdx = 0
+        while (idx < self.getcheckcount()) and (jdx < self.getvarcount()):
+            # find value and index of largest element in remainder of column j
+            while (np.amax(paritycheckmatrix[idx:, jdx]) == 0) and (jdx < self.getvarcount()):
+                jdx += 1
+            kdx = np.argmax(paritycheckmatrix[idx:, jdx]) + idx
+
+            # Interchange rows @var kdx and @var idx
+            row = np.copy(paritycheckmatrix[kdx])
+            paritycheckmatrix[kdx] = paritycheckmatrix[idx]
+            paritycheckmatrix[idx] = row
+
+            rowidxtrailing = paritycheckmatrix[idx, jdx:]
+
+            coljdx = np.copy(paritycheckmatrix[:, jdx]) #make a copy otherwise M will be directly affected
+            coljdx[idx] = 0 #avoid xoring pivot @var rowidxtrailing with itself
+
+            entries2flip = np.outer(coljdx, rowidxtrailing)
+            # Python xor operator
+            paritycheckmatrix[:, jdx:] = paritycheckmatrix[:, jdx:] ^ entries2flip
+
+            idx += 1
+            jdx +=1
+        return paritycheckmatrix
 
     def getcodeword(self):
         """
@@ -683,44 +725,39 @@ class Encoding(BipartiteGraph):
 
     def encodemessage(self, bits):
         """
-        This method performs encoding based on LU decomposition.
-        Operations are done modulo @var self.__getseclength().
+        This method performs encoding based on Gaussian elimination over GF2.
         :param bits: Information bits comprising original message
         """
-        messagebase10 = []
         if len(bits) == (self.getinfocount() * self.getseclength()):
             bits = np.array(bits).reshape((self.getinfocount(), self.getseclength()))
             # Container for fragmented message bits.
             # Initialize variable nodes within information node indices
+            codewordsparse = np.zeros((self.getvarcount(), self.getsparseseclength()))
             for idx in range(self.getinfocount()):
                 # Compute index of fragment @var varnodeid
                 fragment = np.inner(bits[idx], 2 ** np.arange(self.getseclength())[::-1])
-                messagebase10.append(fragment)
-            parityfragments = scipy.linalg.solve(self.__pc_parity, - self.__pc_info.dot(np.array(messagebase10)))
-
-            codewordbased10 = np.zeros(self.getvarcount())
-            for idx in range(self.getinfocount()):
-                codewordbased10[self.__infocolindices[idx]] = messagebase10[idx]
-            for idx in range(self.getparitycount()):
-                codewordbased10[self.__paritycolindices[idx]] = np.rint(parityfragments[idx])
-
-            codewordsparse = []
-            for idx in range(self.getvarcount()):
-                fragment = (codewordbased10[idx] % self.getsparseseclength()).astype(int)
                 # Set sparse representation to all zeros, except for proper location.
                 sparsefragment = np.zeros(self.getsparseseclength(), dtype=int)
                 sparsefragment[fragment] = 1
                 # Add sparse section to codeword.
-                codewordsparse.append(sparsefragment)
-
+                codewordsparse[self.__infocolindices[idx]] = sparsefragment
+            for idx in range(self.getparitycount()):
+                parity = np.remainder(self.__pc_info[idx,:] @ bits, 2)
+                fragment = np.inner(parity, 2 ** np.arange(self.getseclength())[::-1])
+                # Set sparse representation to all zeros, except for proper location.
+                sparsefragment = np.zeros(self.getsparseseclength(), dtype=int)
+                sparsefragment[fragment] = 1
+                # Add sparse section to codeword.
+                codewordsparse[self.__paritycolindices[idx]] = sparsefragment
             codeword = np.array(codewordsparse).flatten()
             return codeword
         else:
             print('Length of input array is not ' + str(self.getinfocount() * self.getseclength()))
+            print('Number of information sections is ' + str(self.getinfocount()))
 
-    def encodemessage2(self, bits):
+    def encodemessageBP(self, bits):
         """
-        This method performs systematic encoding and belief propagation.
+        This method performs systematic encoding through belief propagation.
         Bipartite graph is initialized: local observations for information blocks are derived from message sequence,
         parity states are set to all ones.
         :param bits: Information bits comprising original message
@@ -783,7 +820,7 @@ class Encoding(BipartiteGraph):
                     break
 
             self.updatechecks()
-            print(np.linalg.norm(np.rint(self.getestimates()), ord=0, axis=1))
+            # print(np.linalg.norm(np.rint(self.getestimates()), ord=0, axis=1))
             codeword = np.rint(self.getestimates()).flatten()
             return codeword
         else:
@@ -833,6 +870,9 @@ class Encoding(BipartiteGraph):
             if np.array_equal(np.rint(self.getestimates()).flatten(), self.getobservations().flatten()):
                 # print('Codeword is consistent.')
                 return self.getcodeword()
+            else:
+                print('Codeword has issues.')
+                print(np.sum(self.getobservations() - self.getestimates(), axis=1))
         else:
             print(np.linalg.norm(np.rint(self.getestimates()).flatten(), ord=0))
             print(np.linalg.norm(self.getobservations().flatten(), ord=0))
