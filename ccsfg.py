@@ -1,19 +1,20 @@
 """@package ccsfg
-
-Package @package ccsfg contains the necessary building blocks to implement a bipartite factor graph tailored
-to belief propagation.
-The target appication is the coded compressed sensing, which necessitates the use of a large alphabet.
-Thus, the structures of @class VariableNode and @class CheckNode assume that messages are passed using
- fast Fourier transform (FFT) techniques.
+Package @package ccsfg contains the necessary building blocks to implement a bipartite factor graph tailored to belief
+propagation. The target application is coded compressed sensing, which often necessitates the use of a large alphabet.
+Thus, the structures of @class VariableNode and @class CheckNode assume that messages are passed using either fast
+Walsh–Hadamard transform (FWHT) or fast Fourier transform (FFT) techniques.
 """
 import numpy as np
-import scipy.linalg
+# The fast Walsh–Hadamard transform (FWHT) is borrowed from FALCONN, a library for similarity search over
+# high-dimensional data.
+# https://github.com/FALCONN-LIB/FFHT
 import ffht
 
 
 class GenericNode:
     """
-    Class @class GenericNode creates a single generic node within graph.
+    Base class @class GenericNode creates a single generic node within a graph.
+    This class implements rudimentary properties that are leveraged by derived classes.
     """
 
     def __init__(self, nodeid, neighbors=None):
@@ -24,22 +25,36 @@ class GenericNode:
         """
 
         # Identifier of self
-        self.__ID = nodeid
+        self.id = nodeid
         # List of identifiers corresponding to neighbors within graph
         self.__Neighbors = []
-        # Dictionary of messages from neighbors acces with their identifiers
-        # Some neighbors may not have set messages
-        # Therefore self.__Neighbors may not match self.__MessagesFromNeighbors.keys()
+        # Dictionary of messages from neighbors accessed with their identifiers
+        # Some neighbors may not have set messages therefore @var self.__Neighbors
+        # may not match @var self.__MessagesFromNeighbors.keys()
         self.__MessagesFromNeighbors = dict()
 
-        # Argument @var neighbors (optional) if specified in list form, then neighbors are added
+        # Argument @var neighbors (optional), if specified in list form, determines neighbors added
         if neighbors is not None:
             self.addneighbors(neighbors)
 
-    def getid(self):
-        return self.__ID
+    @property
+    def id(self):
+        return self.__id
 
-    def getneighbors(self):
+    @id.getter
+    def id(self):
+        return self.__id
+
+    @id.setter
+    def id(self, nodeid):
+        self.__id = nodeid
+
+    @property
+    def neighbors(self):
+        return self.__Neighbors
+
+    @neighbors.getter
+    def neighbors(self):
         """
         Retrieve node identifiers contained in list of neighbors.
         """
@@ -113,8 +128,6 @@ class VariableNode(GenericNode):
         """
 
         super().__init__(varnodeid, neighbors)
-        # Unique identifier for variable node
-        self.__ID = varnodeid
         # Length of messages
         self.__MessageLength = messagelength
 
@@ -125,10 +138,10 @@ class VariableNode(GenericNode):
     def reset(self):
         """
         Reset every state of variable node to uninformative measures (all ones).
-        This method employs super().getneighbors() to properly reset message for
+        This method employs @property super().neighbors to properly reset message for
         (trivial) check node zero to uninformative measure.
         """
-        for neighborid in super().getneighbors():
+        for neighborid in super().neighbors:
             self.setstate(neighborid, np.ones(self.__MessageLength, dtype=float))
         # self.setobservation(self, np.ones(self.__MessageLength, dtype=float))
 
@@ -136,7 +149,7 @@ class VariableNode(GenericNode):
         """
         Retrieve node identifiers contained in list of neighbors.
         """
-        return [neighbor for neighbor in super().getneighbors() if neighbor != 0]
+        return [neighbor for neighbor in super().neighbors if neighbor != 0]
 
     def getobservation(self):
         """
@@ -227,8 +240,6 @@ class CheckNodeFFT(GenericNode):
         """
 
         super().__init__(checknodeid, neighbors)
-        # Unique identifier for check node
-        self.__ID = checknodeid
         # Length of messages
         self.__MessageLength = messagelength
 
@@ -240,6 +251,9 @@ class CheckNodeFFT(GenericNode):
         # The length of np.fft.rfft is NOT self.__MessageLength.
         for neighborid in self.getneighbors():
             self.setstate(neighborid, uninformative)
+
+    def getneighbors(self):
+        return self.neighbors
 
     def setmessagefromvar(self, varneighborid, message):
         """
@@ -300,8 +314,6 @@ class CheckNodeFWHT(GenericNode):
         """
 
         super().__init__(checknodeid, neighbors)
-        # Unique identifier for check node
-        self.__ID = checknodeid
         # Length of messages
         self.__MessageLength = messagelength
 
@@ -313,6 +325,9 @@ class CheckNodeFWHT(GenericNode):
         ffht.fht(uninformative) # @method fht acts in place on @type float
         for neighborid in self.getneighbors():
             self.setstate(neighborid, uninformative)
+
+    def getneighbors(self):
+        return self.neighbors
 
     def setmessagefromvar(self, varneighborid, message):
         """
@@ -408,7 +423,7 @@ class BipartiteGraph:
         for checknode in self.__CheckNodes.values():
             for neighbor in checknode.getneighbors():
                 # Add edges from variable nodes to check nodes.
-                self.__VarNodes[neighbor].addneighbor(checknode.getid())
+                self.__VarNodes[neighbor].addneighbor(checknode.id)
 
     def reset(self):
         # Reset states at variable nodes to uniform measures.
@@ -420,6 +435,14 @@ class BipartiteGraph:
 
     def getchecklist(self):
         return list(self.__CheckNodes.keys())
+
+    @property
+    def checkcount(self):
+        return self.__id
+
+    @checkcount.getter
+    def checkcount(self):
+        return len(self.__CheckNodes)
 
     def getcheckcount(self):
         return len(self.__CheckNodes)
@@ -500,13 +523,13 @@ class BipartiteGraph:
         if checknodelist is None:
             for checknode in self.__CheckNodes.values():
                 varneighborlist = checknode.getneighbors()
-                # print('Updating State of Check ' + str(checknode.getid()), end=' ')
+                # print('Updating State of Check ' + str(checknode.id), end=' ')
                 # print('Using Variable Neighbors ' + str(varneighborlist))
                 for varnodeid in varneighborlist:
                     # print('\t Check Neighbor: ' + str(varnodeid))
                     # print('\t Others: ' + str([member for member in varneighborlist if member is not varnodeid]))
                     checknode.setmessagefromvar(varnodeid,
-                                                self.__VarNodes[varnodeid].getmessagetocheck(checknode.getid()))
+                                                self.__VarNodes[varnodeid].getmessagetocheck(checknode.id))
             return
         else:
             if np.isscalar(checknodelist):
@@ -521,13 +544,13 @@ class BipartiteGraph:
                     break
                 varneighborlist = checknode.getneighbors()
                 varneighborsaggregate.update(varneighborlist)
-                # print('Updating State of Check ' + str(checknode.getid()), end=' ')
+                # print('Updating State of Check ' + str(checknode.id), end=' ')
                 # print('Using Variable Neighbors ' + str(varneighborlist))
                 for varnodeid in varneighborlist:
                     # print('\t Check Neighbor: ' + str(varnodeid))
                     # print('\t Others: ' + str([member for member in varneighborlist if member is not varnodeid]))
                     checknode.setmessagefromvar(varnodeid,
-                                                self.__VarNodes[varnodeid].getmessagetocheck(checknode.getid()))
+                                                self.__VarNodes[varnodeid].getmessagetocheck(checknode.id))
             return list(varneighborsaggregate)
 
     def updatevars(self, varnodelist=None):
@@ -542,12 +565,12 @@ class BipartiteGraph:
         if varnodelist is None:
             for varnode in self.__VarNodes.values():
                 checkneighborlist = varnode.getneighbors()
-                # print('Updating State of Variable ' + str(varnode.getid()), end=' ')
+                # print('Updating State of Variable ' + str(varnode.id), end=' ')
                 # print('Using Check Neighbors ' + str(checkneighborlist))
                 for checknodeid in checkneighborlist:
                     # print('\t Variable Neighbor: ' + str(neighbor))
                     # print('\t Others: ' + str([member for member in checkneighborlist if member is not neighbor]))
-                    measure = self.__CheckNodes[checknodeid].getmessagetovar(varnode.getid())
+                    measure = self.__CheckNodes[checknodeid].getmessagetovar(varnode.id)
                     weight = np.linalg.norm(measure, ord=1)
                     if weight != 0:
                         measure = measure / weight
@@ -568,12 +591,12 @@ class BipartiteGraph:
                     break
                 checkneighborlist = varnode.getneighbors()
                 checkneighborsaggregate.update(checkneighborlist)
-                # print('Updating State of Variable ' + str(varnode.getid()), end=' ')
+                # print('Updating State of Variable ' + str(varnode.id), end=' ')
                 # print('Using Check Neighbors ' + str(checkneighborlist))
                 for checknodeid in checkneighborlist:
                     # print('\t Variable Neighbor: ' + str(neighbor))
                     # print('\t Others: ' + str([member for member in checkneighborlist if member is not neighbor]))
-                    measure = self.__CheckNodes[checknodeid].getmessagetovar(varnode.getid())
+                    measure = self.__CheckNodes[checknodeid].getmessagetovar(varnode.id)
                     weight = np.linalg.norm(measure, ord=1)
                     if weight != 0:
                         measure = measure / weight
@@ -628,6 +651,7 @@ class Encoding(BipartiteGraph):
             paritycheckmatrix.append(row)
         paritycheckmatrix = np.array(paritycheckmatrix)
         print('Size of parity check matrix: ' + str(paritycheckmatrix.shape))
+        print('Rank of parity check matrix: ' + str(np.linalg.matrix_rank(paritycheckmatrix)))
 
         if infonodeindices is None:
             systematicmatrix = self.eliminationgf2(paritycheckmatrix)
@@ -685,7 +709,7 @@ class Encoding(BipartiteGraph):
         jdx = 0
         while (idx < self.getcheckcount()) and (jdx < self.getvarcount()):
             # find value and index of largest element in remainder of column j
-            while (np.amax(paritycheckmatrix[idx:, jdx]) == 0) and (jdx < self.getvarcount()):
+            while (np.amax(paritycheckmatrix[idx:, jdx]) == 0) and (jdx < (self.getvarcount()-1)):
                 jdx += 1
             kdx = np.argmax(paritycheckmatrix[idx:, jdx]) + idx
 
@@ -826,6 +850,7 @@ class Encoding(BipartiteGraph):
         else:
             print('Length of input array is not ' + str(self.getinfocount() * self.getseclength()))
 
+
     def encodemessages(self, infoarray):
         """
         This method encodes multiple messages into codewords by performing systematic encoding
@@ -872,6 +897,8 @@ class Encoding(BipartiteGraph):
                 return self.getcodeword()
             else:
                 print('Codeword has issues.')
+                print(np.sum(self.getobservations(), axis=1))
+                print(np.sum(self.getestimates(), axis=1))
                 print(np.sum(self.getobservations() - self.getestimates(), axis=1))
         else:
             print(np.linalg.norm(np.rint(self.getestimates()).flatten(), ord=0))
