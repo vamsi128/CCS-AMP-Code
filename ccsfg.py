@@ -593,6 +593,161 @@ class BipartiteGraph:
             print('Check Node ID ' + str(checknodeid), end=": ")
             print(self.getchecknode(checknodeid).getstates())
 
+    def decoder(self, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MAYBE
+        """
+        This method seeks to disambiguate codewords from node states.
+        Gather local state estimates from variables nodes and retain top values in place.
+        Set values of other indices within every section to zero.
+        Perform belief propagation and return `count` likely codewords.
+        :param stateestimates: Local estimates from variable nodes.
+        :param count: Maximum number of codewords returned.
+        :return: List of likely codewords.
+        """
+
+        # Resize @var stateestimates to match local measures from variable nodes.
+        stateestimates.resize(self.varcount, self.sparseseclength)
+        thresholdedestimates = np.zeros(stateestimates.shape)
+
+        # NOTE: Pruning impossible paths prior to root decoding has minimal impact.
+        # CCS-AMP already encourages paths to be locally consistent.
+        # This step is extraneous and should probably be avoided.
+        # topindices = []
+        # hardestimates = np.zeros(stateestimates.shape)
+        # idx: int
+        # for idx in range(self.varcount):
+        #     trailingtopindices = np.argpartition(stateestimates[idx], -64)[-64:]
+        #     # Retain values corresponding to top indices and zero out other entries.
+        #     # Set most likely locations to one.
+        #     for topidx in trailingtopindices:
+        #         hardestimates[idx, topidx] = 1 if (stateestimates[idx, topidx] != 0) else 0
+        #     self.setobservation(idx+1,hardestimates[idx,:])
+        #
+        # for iteration in range(16):
+        #     self.updatechecks()
+        #     self.updatevars()
+        #
+        # for idx in range(self.varcount):
+        #     hardestimates[idx] = self.getestimate(idx+1)
+
+        # Retain most likely values in every section.
+        idx: int
+        for idx in range(self.varcount):
+            # Function np.argpartition puts indices of top arguments at the end (unordered).
+            # Variable @var trailingtopindices holds these arguments.
+            trailingtopindices = np.argpartition(stateestimates[idx], -count)[-count:]  # CHECK count or 1024
+            # Retain values corresponding to top indices and zero out other entries.
+            for topidx in trailingtopindices:
+                thresholdedestimates[idx, topidx] = stateestimates[idx, topidx]
+
+        # Find `count` most likely locations in every section and zero out the rest.
+        # List of candidate codewords.
+        recoveredcodewords = []
+        # Function np.argpartition puts indices of top arguments at the end.
+        # If count differs from above argument, then call np.argpartition again because top output are not ordered.
+        # Indices of `count` most likely locations in root section
+        trailingtopindices = np.argpartition(thresholdedestimates[0, :], -count)[-count:]
+        # Iterating through evey retained location in root section
+        for topidx in trailingtopindices:
+            print('Root section ID: ' + str(topidx))
+            # Reset graph, including check nodes, is critical for every root location.
+            self.reset()
+            rootsingleton = np.zeros(self.sparseseclength)
+            rootsingleton[topidx] = 1 if (thresholdedestimates[0, topidx] != 0) else 0
+            self.setobservation(1, rootsingleton)
+            for idx in range(1, self.varcount):
+                self.setobservation(idx + 1, thresholdedestimates[idx, :])
+
+            ## This may only work for hierchical settings.
+
+            # Start with full list of nodes to update.
+            checknodes2update = set(self.checklist)
+            self.updatechecks(checknodes2update)  # Update Check first
+            varnodes2update = set(self.varlist)
+            self.updatevars(varnodes2update)
+            # Initialize vector of section weights
+            newsectionweights0 = np.linalg.norm(self.getestimates(), ord=0, axis=1)
+            for iteration in range(self.maxdepth):  # Max depth
+                sectionweights0 = np.linalg.norm(self.getestimates(), ord=0, axis=1)
+                checkneighbors = set()
+                varneighbors = set()
+
+                # Update variable nodes and check for convergence
+                self.updatevars(varnodes2update)
+                for varnodeid in varnodes2update:
+                    currentmeasure = self.getestimate(varnodeid)
+                    currentweight1 = np.linalg.norm(currentmeasure, ord=1)
+                    if np.isclose(currentweight1, np.amax(currentmeasure)):
+                        varnodes2update = varnodes2update - {varnodeid}
+                        checkneighbors.update(self.getvarnode(varnodeid).neighbors)
+                        singleton = np.zeros(self.sparseseclength)
+                        if np.isclose(currentweight1, 0):
+                            pass
+                        else:
+                            singleton[np.argmax(currentmeasure)] = 1 if (thresholdedestimates[0, topidx] != 0) else 0
+                        self.setobservation(varnodeid, singleton)
+                if checkneighbors != set():
+                    self.updatechecks(checkneighbors)
+                # print('Variable nodes to update: ' + str(varnodes2update))
+
+                # Update check nodes and check for convergence
+                self.updatechecks(checknodes2update)
+                for checknodeid in checknodes2update:
+                    if set(self.getchecknode(checknodeid).neighbors).isdisjoint(varnodes2update):
+                        checknodes2update = checknodes2update - {checknodeid}
+                        varneighbors.update(self.getchecknode(checknodeid).neighbors)
+                if varneighbors != set():
+                    self.updatevars(varneighbors)
+                # print('Check nodes to update: ' + str(checknodes2update))
+
+                # Monitor progress and trim section, if necessary
+                newsectionweights0 = np.linalg.norm(self.getestimates(), ord=0, axis=1)
+                # maxsectionlength = 1 + np.ceil(1024 * (self.maxdepth - iteration - 1)/self.maxdepth).astype(int)
+                maxsectionlength = np.ceil(
+                    2 ** ((np.log2(128) / self.maxdepth) * (self.maxdepth - iteration - 1))).astype(int)
+                if np.amin(newsectionweights0) == 0 or len(varnodes2update) == 0:
+                    break
+                # elif np.array_equal(sectionweights0, newsectionweights0):
+                elif np.amax(newsectionweights0) > maxsectionlength:
+                    # print('trimming')
+                    for varnodeid in varnodes2update:
+                        currentmeasure = self.getestimate(varnodeid)
+                        currentweight0 = np.linalg.norm(currentmeasure, ord=0).astype(int)
+                        if currentweight0 > maxsectionlength:
+                            supportsize = maxsectionlength
+                            # Function np.argpartition puts indices of top arguments at the end (unordered).
+                            # Variable @var trailingtopindices holds these arguments.
+                            currentobservation = self.getobservation(varnodeid)
+                            trimmedtopindices = np.argpartition(currentmeasure, -supportsize)[-supportsize:]
+                            # Retain values corresponding to top indices and zero out other entries.
+                            trimmedobservation = np.zeros(self.sparseseclength)
+                            for trimmedidx in trimmedtopindices:
+                                trimmedobservation[trimmedidx] = currentobservation[trimmedidx]
+                                self.setobservation(varnodeid, trimmedobservation)
+                            self.updatechecks(self.getvarnode(varnodeid).neighbors)
+                        else:
+                            pass
+                # print('Weights ' + str(newsectionweights0))
+
+            decoded = self.getcodeword().flatten()
+            decodedsum = np.sum(decoded.flatten())
+            if decodedsum == self.varcount:
+                recoveredcodewords.append(decoded)
+            elif decodedsum > self.varcount:  # CHECK: Can be improved later
+                print('Disambiguation failed.')
+                recoveredcodewords.append(decoded)
+            else:
+                pass
+
+        # Order candidates
+        likelihoods = []
+        for candidate in recoveredcodewords:
+            isolatedvalues = np.prod((candidate, stateestimates.flatten()), axis=0)
+            isolatedvalues.resize(self.varcount, self.sparseseclength)
+            likelihoods.append(np.prod(np.amax(isolatedvalues, axis=1)))
+        idxsorted = np.argsort(likelihoods)
+        recoveredcodewords = [recoveredcodewords[idx] for idx in idxsorted[::-1]]
+        return recoveredcodewords
+
 
 class Encoding(BipartiteGraph):
 
@@ -635,6 +790,8 @@ class Encoding(BipartiteGraph):
             self.__ParityNodeIndices = [varnodeid for varnodeid in self.varlist if varnodeid not in infonodeindices]
             self.__paritycolindices = [idx - 1 for idx in self.__ParityNodeIndices]
 
+        self.__maxdepth = len(self.__ParityNodeIndices)
+
         print('Number of parity nodes: ' + str(len(set(self.__ParityNodeIndices))))
         self.__pc_parity = paritycheckmatrix[:, self.__paritycolindices]
         # print('Rank parity component: ' + str(np.linalg.matrix_rank(self.__pc_parity)))
@@ -660,6 +817,14 @@ class Encoding(BipartiteGraph):
     @property
     def paritycount(self):
         return len(self.paritylist)
+
+    @property
+    def maxdepth(self):
+        return self.__maxdepth
+
+    @maxdepth.setter
+    def maxdepth(self, depth):
+        self.__maxdepth = depth
 
     def eliminationgf2(self, paritycheckmatrix):
         idx = 0
@@ -862,3 +1027,25 @@ class Encoding(BipartiteGraph):
             print(np.linalg.norm(np.rint(self.getestimates()).flatten(), ord=0))
             print(np.linalg.norm(self.getobservations().flatten(), ord=0))
             print('Codeword has issues.')
+
+
+def numbermatches(codewords, recoveredcodewords, maxcount=None):
+    """
+    Counts number of matches between `codewords` and `recoveredcodewords`.
+    CHECK: Does not insure uniqueness.
+    :param codewords: List of true codewords.
+    :param recoveredcodewords: List of candidate codewords from most to least likely.
+    :return: Number of true codewords recovered.
+    """
+    # Provision for scenario where candidate count is smaller than codeword count.
+    if maxcount is None:
+        maxcount = min(len(codewords), len(recoveredcodewords))
+    else:
+        maxcount = min(len(codewords), len(recoveredcodewords), maxcount)
+    matchcount = 0
+    for candidateindex in range(maxcount):
+        candidate = recoveredcodewords[candidateindex]
+        # print('Candidate codeword: ' + str(candidate))
+        # print(np.equal(codewords,candidate).all(axis=1)) # Check if candidate individual codewords
+        matchcount = matchcount + (np.equal(codewords, candidate).all(axis=1).any()).astype(int)  # Check if matches any
+    return matchcount

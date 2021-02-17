@@ -1,6 +1,7 @@
 __author__ = 'JF Chamberland'
 
 import ccsfg as ccsfg
+from ccsfg import numbermatches
 import numpy as np
 
 class WIMAX_768_640(ccsfg.Encoding):
@@ -134,13 +135,8 @@ class WIMAX_768_640(ccsfg.Encoding):
         self.__Check2VarEdges.append([14, 78, 99, 170, 194, 225, 257, 292, 335, 380, 391, 444, 465, 488, 538, 572, 577, 628, 664, 766])
         self.__Check2VarEdges.append([15, 79, 100, 171, 195, 226, 258, 293, 336, 381, 392, 445, 466, 489, 539, 573, 578, 629, 665, 767])
         self.__Check2VarEdges.append([16, 80, 101, 172, 196, 227, 259, 294, 337, 382, 393, 446, 467, 490, 540, 574, 579, 630, 666, 768])
-        self.__SystematicVars = list(range(1,640+1))
-        super().__init__(self.__Check2VarEdges, self.__SystematicVars, seclength)
-        self.__DMIN = 7
-
-    def getmaxdepth(self):
-        return self.__DMIN
-
+        super().__init__(self.__Check2VarEdges, None, seclength)
+        self.maxdepth = 7
 
 class Triadic6(ccsfg.Encoding):
 
@@ -153,10 +149,7 @@ class Triadic6(ccsfg.Encoding):
         self.__Check2VarEdges.append([9, 10, 11])
         self.__Check2VarEdges.append([11, 12, 1])
         super().__init__(self.__Check2VarEdges, [1, 3, 5, 7, 9, 11], seclength)
-        self.__DepthFromRoot = 6  # CHECK
-
-    def getmaxdepth(self):
-        return self.__DepthFromRoot
+        self.maxdepth = 6  # CHECK
 
 
 class Triadic8(ccsfg.Encoding):
@@ -172,10 +165,7 @@ class Triadic8(ccsfg.Encoding):
         self.__Check2VarEdges.append([15, 16, 1])
         self.__SystematicVars = [1, 3, 5, 7, 9, 11, 13, 15]
         super().__init__(self.__Check2VarEdges, self.__SystematicVars, seclength)
-        self.__DepthFromRoot = 8
-
-    def getmaxdepth(self):
-        return self.__DepthFromRoot
+        self.maxdepth = 8
 
 
 class Triadic10(ccsfg.Encoding):
@@ -193,10 +183,7 @@ class Triadic10(ccsfg.Encoding):
         self.__Check2VarEdges.append([19, 20, 1])
         self.__SystematicVars = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
         super().__init__(self.__Check2VarEdges, self.__SystematicVars, seclength)
-        self.__DepthFromRoot = 10
-
-    def getmaxdepth(self):
-        return self.__DepthFromRoot
+        self.maxdepth = 10
 
 
 class Triadic12(ccsfg.Encoding):
@@ -216,10 +203,7 @@ class Triadic12(ccsfg.Encoding):
         self.__Check2VarEdges.append([23, 24, 1])
         self.__SystematicVars = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23]
         super().__init__(self.__Check2VarEdges, self.__SystematicVars, seclength)
-        self.__DepthFromRoot = 12
-
-    def getmaxdepth(self):
-        return self.__DepthFromRoot
+        self.maxdepth = 12
 
 
 class Triadic15(ccsfg.Encoding):
@@ -242,10 +226,7 @@ class Triadic15(ccsfg.Encoding):
         self.__Check2VarEdges.append([29, 30, 1])
         self.__SystematicVars = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29]
         super().__init__(self.__Check2VarEdges, self.__SystematicVars, seclength)
-        self.__DepthFromRoot = 15
-
-    def getmaxdepth(self):
-        return self.__DepthFromRoot
+        self.maxdepth = 15
 
 
 class Triadic16(ccsfg.Encoding):
@@ -268,10 +249,7 @@ class Triadic16(ccsfg.Encoding):
         self.__Check2VarEdges.append([29, 30, 31])
         self.__Check2VarEdges.append([31, 32, 1])
         super().__init__(self.__Check2VarEdges, [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31], seclength)
-        self.__DepthFromRoot = 16
-
-    def getmaxdepth(self):
-        return self.__DepthFromRoot
+        self.maxdepth = 16
 
 
 class CCSDS_ldpc_n32_k16(ccsfg.Encoding):
@@ -295,10 +273,8 @@ class CCSDS_ldpc_n32_k16(ccsfg.Encoding):
         self.__Check2VarEdges.append([1, 7, 11, 14, 15, 19, 27, 31])
         self.__Check2VarEdges.append([2, 8, 12, 15, 16, 20, 28, 32])
         super().__init__(self.__Check2VarEdges, None, seclength)
-        self.__DepthFromRoot = 16  # CHECK
+        self.maxdepth = 16  # CHECK
 
-    def getmaxdepth(self):
-        return self.__DepthFromRoot
 
 class MacKay_96_33_964(ccsfg.Encoding):
     def __init__(self, seclength=8):
@@ -353,10 +329,7 @@ class MacKay_96_33_964(ccsfg.Encoding):
         self.__Check2VarEdges.append([1, 67, 37, 74, 8, 73])
         self.__Check2VarEdges.append([7, 80, 4, 66, 25, 81])
         super().__init__(self.__Check2VarEdges, None, seclength)
-        self.__DepthFromRoot = 24  # CHECK
-
-    def getmaxdepth(self):
-        return self.__DepthFromRoot
+        self.maxdepth = 24  # CHECK
 
 
 class WRAN_N384_K192(ccsfg.Encoding):
@@ -556,10 +529,7 @@ class WRAN_N384_K192(ccsfg.Encoding):
         self.__Check2VarEdges.append([6, 90, 117, 179, 208, 383])
         self.__Check2VarEdges.append([7, 91, 118, 180, 193, 384])
         super().__init__(self.__Check2VarEdges, None, seclength)
-        self.__DepthFromRoot = 96  # CHECK
-
-    def getmaxdepth(self):
-        return self.__DepthFromRoot
+        self.maxdepth = 96  # CHECK
 
 
 class GraphTest(ccsfg.Encoding):
@@ -568,196 +538,12 @@ class GraphTest(ccsfg.Encoding):
         self.__Check2VarEdges.append([1, 2, 3])
         self.__Check2VarEdges.append([2, 4])
         super().__init__(self.__Check2VarEdges, [1, 2], seclength)
-        self.__DepthFromRoot = 8  # CHECK
+        self.maxdepth = 8  # CHECK
 
-    def getmaxdepth(self):
-        return self.__DepthFromRoot
-
-
-def decoder(graph, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MAYBE
-    """
-    This method seeks to disambiguate codewords from node states.
-    Gather local state estimates from variables nodes and retain top values in place.
-    Set values of other indices within every section to zero.
-    Perform belief propagation and return `count` likely codewords.
-    :param graph: Bipartite graph for error correcting code.
-    :param stateestimates: Local estimates from variable nodes.
-    :param count: Maximum number of codewords returned.
-    :return: List of likely codewords.
-    """
-
-    # Resize @var stateestimates to match local measures from variable nodes.
-    stateestimates.resize(graph.getvarcount(), graph.getsparseseclength())
-    thresholdedestimates = np.zeros(stateestimates.shape)
-
-    # # NOTE: Pruning impossible paths prior to root decoding has minimal impact.
-    # # CCS-AMP already encourages paths to be locally consistent.
-    # # This step is extraneous and should probably be avoided.
-    # topindices = []
-    # hardestimates = np.zeros(stateestimates.shape)
-    # idx: int
-    # for idx in range(graph.getvarcount()):
-    #     trailingtopindices = np.argpartition(stateestimates[idx], -64)[-64:]
-    #     # Retain values corresponding to top indices and zero out other entries.
-    #     # Set most likely locations to one.
-    #     for topidx in trailingtopindices:
-    #         hardestimates[idx, topidx] = 1 if (stateestimates[idx, topidx] != 0) else 0
-    #     print(np.linalg.norm(hardestimates[idx], ord=0), end=' ')
-    #     graph.setobservation(idx+1,hardestimates[idx,:])
-    # print('\n')
-    #
-    # for iteration in range(16):    # For Graph6
-    #     graph.updatechecks()  # Update Check first
-    #     graph.updatevars()
-    #
-    # for idx in range(graph.getvarcount()):
-    #     hardestimates[idx] = graph.getestimate(idx+1)
-    #     print(np.linalg.norm(hardestimates[idx,:], ord=0), end=' ')
-
-    # Retain most likely values in every section.
-    idx: int
-    for idx in range(graph.getvarcount()):
-        # Function np.argpartition puts indices of top arguments at the end (unordered).
-        # Variable @var trailingtopindices holds these arguments.
-        trailingtopindices = np.argpartition(stateestimates[idx], -count)[-count:]  # CHECK count or 1024
-        # Retain values corresponding to top indices and zero out other entries.
-        for topidx in trailingtopindices:
-            thresholdedestimates[idx, topidx] = stateestimates[idx, topidx]
-
-    # Find `count` most likely locations in every section and zero out the rest.
-    # List of candidate codewords.
-    recoveredcodewords = []
-    # Function np.argpartition puts indices of top arguments at the end.
-    # If count differs from above argument, then call np.argpartition again because top output are not ordered.
-    # Indices of `count` most likely locations in root section
-    trailingtopindices = np.argpartition(thresholdedestimates[0, :], -count)[-count:]
-    # Iterating through evey retained location in root section
-    for topidx in trailingtopindices:
-        print('Root section ID: ' + str(topidx))
-        # Reset graph, including check nodes, is critical for every root location.
-        graph.reset()
-        rootsingleton = np.zeros(graph.getsparseseclength())
-        rootsingleton[topidx] = 1 if (thresholdedestimates[0, topidx] != 0) else 0
-        graph.setobservation(1, rootsingleton)
-        for idx in range(1, graph.getvarcount()):
-            graph.setobservation(idx + 1, thresholdedestimates[idx, :])
-
-        ## This may only work for hierchical settings.
-
-        # Start with full list of nodes to update.
-        checknodes2update = set(graph.getchecklist())
-        graph.updatechecks(checknodes2update)  # Update Check first
-        varnodes2update = set(graph.getvarlist())
-        graph.updatevars(varnodes2update)
-        # Initialize vector of section weights
-        newsectionweights0 = np.linalg.norm(graph.getestimates(), ord=0, axis=1)
-        for iteration in range(graph.getmaxdepth()):  # Max depth
-            sectionweights0 = np.linalg.norm(graph.getestimates(), ord=0, axis=1)
-            checkneighbors = set()
-            varneighbors = set()
-
-            # Update variable nodes and check for convergence
-            graph.updatevars(varnodes2update)
-            for varnodeid in varnodes2update:
-                currentmeasure = graph.getestimate(varnodeid)
-                currentweight1 = np.linalg.norm(currentmeasure, ord=1)
-                if np.isclose(currentweight1, np.amax(currentmeasure)):
-                    varnodes2update = varnodes2update - {varnodeid}
-                    checkneighbors.update(graph.getvarneighbors(varnodeid))
-                    singleton = np.zeros(graph.getsparseseclength())
-                    if np.isclose(currentweight1, 0):
-                        pass
-                    else:
-                        singleton[np.argmax(currentmeasure)] = 1 if (thresholdedestimates[0, topidx] != 0) else 0
-                    graph.setobservation(varnodeid, singleton)
-            if checkneighbors != set():
-                graph.updatechecks(checkneighbors)
-            # print('Variable nodes to update: ' + str(varnodes2update))
-
-            # Update check nodes and check for convergence
-            graph.updatechecks(checknodes2update)
-            for checknodeid in checknodes2update:
-                if set(graph.getcheckneighbors(checknodeid)).isdisjoint(varnodes2update):
-                    checknodes2update = checknodes2update - {checknodeid}
-                    varneighbors.update(graph.getcheckneighbors(checknodeid))
-            if varneighbors != set():
-                graph.updatevars(varneighbors)
-            # print('Check nodes to update: ' + str(checknodes2update))
-
-            # Monitor progress and trim section, if necessary
-            newsectionweights0 = np.linalg.norm(graph.getestimates(), ord=0, axis=1)
-            # maxsectionlength = 1 + np.ceil(1024 * (graph.getmaxdepth() - iteration - 1)/graph.getmaxdepth()).astype(int)
-            maxsectionlength = np.ceil(
-                2 ** ((np.log2(128) / graph.getmaxdepth()) * (graph.getmaxdepth() - iteration - 1))).astype(int)
-            if np.amin(newsectionweights0) == 0 or len(varnodes2update) == 0:
-                break
-            # elif np.array_equal(sectionweights0, newsectionweights0):
-            elif np.amax(newsectionweights0) > maxsectionlength:
-                # print('trimming')
-                for varnodeid in varnodes2update:
-                    currentmeasure = graph.getestimate(varnodeid)
-                    currentweight0 = np.linalg.norm(currentmeasure, ord=0).astype(int)
-                    if currentweight0 > maxsectionlength:
-                        supportsize = maxsectionlength
-                        # Function np.argpartition puts indices of top arguments at the end (unordered).
-                        # Variable @var trailingtopindices holds these arguments.
-                        currentobservation = graph.getobservation(varnodeid)
-                        trimmedtopindices = np.argpartition(currentmeasure, -supportsize)[-supportsize:]
-                        # Retain values corresponding to top indices and zero out other entries.
-                        trimmedobservation = np.zeros(graph.getsparseseclength())
-                        for trimmedidx in trimmedtopindices:
-                            trimmedobservation[trimmedidx] = currentobservation[trimmedidx]
-                            graph.setobservation(varnodeid, trimmedobservation)
-                        graph.updatechecks(graph.getvarneighbors(varnodeid))
-                    else:
-                        pass
-            # print('Weights ' + str(newsectionweights0))
-
-        decoded = graph.getcodeword().flatten()
-        decodedsum = np.sum(decoded.flatten())
-        if decodedsum == graph.getvarcount():
-            recoveredcodewords.append(decoded)
-        elif decodedsum > graph.getvarcount():  # CHECK: Can be improved later
-            print('Disambiguation failed.')
-            recoveredcodewords.append(decoded)
-        else:
-            pass
-
-    # Order candidates
-    likelihoods = []
-    for candidate in recoveredcodewords:
-        isolatedvalues = np.prod((candidate, stateestimates.flatten()), axis=0)
-        isolatedvalues.resize(graph.getvarcount(), graph.getsparseseclength())
-        likelihoods.append(np.prod(np.amax(isolatedvalues, axis=1)))
-    idxsorted = np.argsort(likelihoods)
-    recoveredcodewords = [recoveredcodewords[idx] for idx in idxsorted[::-1]]
-    return recoveredcodewords
-
-
-def numbermatches(codewords, recoveredcodewords, maxcount=None):
-    """
-    Counts number of matches between `codewords` and `recoveredcodewords`.
-    CHECK: Does not insure uniqueness.
-    :param codewords: List of true codewords.
-    :param recoveredcodewords: List of candidate codewords from most to least likely.
-    :return: Number of true codewords recovered.
-    """
-    # Provision for scenario where candidate count is smaller than codeword count.
-    if maxcount is None:
-        maxcount = min(len(codewords), len(recoveredcodewords))
-    else:
-        maxcount = min(len(codewords), len(recoveredcodewords), maxcount)
-    matchcount = 0
-    for candidateindex in range(maxcount):
-        candidate = recoveredcodewords[candidateindex]
-        # print('Candidate codeword: ' + str(candidate))
-        # print(np.equal(codewords,candidate).all(axis=1)) # Check if candidate individual codewords
-        matchcount = matchcount + (np.equal(codewords, candidate).all(axis=1).any()).astype(int)  # Check if matches any
-    return matchcount
 
 
 def displayinfo(graph, binarysequence):
-    alphabet = graph.getseclength()
+    alphabet = graph.seclength
     binsections = binarysequence.reshape(alphabet, -1)
     sections = []
     # for sectionindex in range(len(binarysequence)):
@@ -774,7 +560,7 @@ def displayinfo(graph, binarysequence):
 # TestCode.printgraphcontent()
 #
 # NumberDevices = 1
-# infoarray = np.random.randint(2, size=(NumberDevices,TestCode.getinfocount()*TestCode.getseclength()))
+# infoarray = np.random.randint(2, size=(NumberDevices,TestCode.infocount*TestCode.seclength))
 # infoarray = [[1, 1, 0, 0, 0, 0, 0, 0]]
 # print('Information bits:\n' + str(infoarray))
 # print('Signal sections:\n' + str(codewords))
@@ -786,15 +572,15 @@ def displayinfo(graph, binarysequence):
 # signal = TestCode.encodesignal(infoarray)
 # print('Signal reshaped:\n' + str(signal))
 
-# testvector = np.ones((TestCode.getvarcount(),TestCode.getsparseseclength()))
-# testvector[0] = np.zeros(TestCode.getsparseseclength())
-# for sectionid in TestCode.getvarlist():
+# testvector = np.ones((TestCode.varcount,TestCode.sparseseclength))
+# testvector[0] = np.zeros(TestCode.sparseseclength)
+# for sectionid in TestCode.varlist:
 #     TestCode.setobservation(sectionid, testvector[sectionid-1,:])
-#     print(np.sum([TestCode.getextrinsicestimate(varnodeid).flatten() for varnodeid in TestCode.getvarlist()],axis=1))
+#     print(np.sum([TestCode.getextrinsicestimate(varnodeid).flatten() for varnodeid in TestCode.varlist],axis=1))
 # for iteration in range(TestCode.getmaxdepth()):    # Max depth
 #     TestCode.updatechecks()
 #     TestCode.updatevars()
-#     print(np.sum([TestCode.getextrinsicestimate(varnodeid) for varnodeid in TestCode.getvarlist()],axis=1))
+#     print(np.sum([TestCode.getextrinsicestimate(varnodeid) for varnodeid in TestCode.varlist],axis=1))
 
 
 #
