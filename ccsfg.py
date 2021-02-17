@@ -810,47 +810,6 @@ class Encoding(BipartiteGraph):
         else:
             print('Length of input array is not ' + str(self.infocount * self.seclength))
 
-    def encodemessage2(self, bits):
-        """
-        This method performs systematic encoding..
-        Operations are done modulo @var self.seclength.
-        :param bits: Information bits comprising original message
-        """
-        messagebase10 = []
-        if len(bits) == (self.infocount * self.seclength):
-            bits = np.array(bits).reshape((self.infocount, self.seclength))
-            # Container for fragmented message bits.
-            # Initialize variable nodes within information node indices
-            for idx in range(self.infocount):
-                # Compute index of fragment @var varnodeid
-                fragment = np.inner(bits[idx], 2 ** np.arange(self.seclength)[::-1])
-                messagebase10.append(fragment)
-            print(self.__InfoNodeIndices)
-            print(messagebase10)
-            parityfragments = - (self.__pc_info @ np.array(messagebase10))
-            print(self.__ParityNodeIndices)
-            print(parityfragments)
-            codewordbased10 = np.zeros(self.varcount)
-            for idx in range(self.infocount):
-                codewordbased10[self.__infocolindices[idx]] = messagebase10[idx]
-            for idx in range(self.paritycount):
-                codewordbased10[self.__paritycolindices[idx]] = np.rint(parityfragments[idx])
-
-            codewordsparse = []
-            for idx in range(self.varcount):
-                fragment = (codewordbased10[idx] % self.sparseseclength).astype(int)
-                # Set sparse representation to all zeros, except for proper location.
-                sparsefragment = np.zeros(self.sparseseclength, dtype=int)
-                sparsefragment[fragment] = 1
-                # Add sparse section to codeword.
-                codewordsparse.append(sparsefragment)
-
-            codeword = np.array(codewordsparse).flatten()
-            return codeword
-        else:
-            print('Length of input array is not ' + str(self.infocount * self.seclength))
-            print('Number of information sections is ' + str(self.infocount))
-
     def encodemessages(self, infoarray):
         """
         This method encodes multiple messages into codewords by performing systematic encoding
