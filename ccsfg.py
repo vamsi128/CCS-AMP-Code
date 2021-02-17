@@ -25,7 +25,7 @@ class GenericNode:
         """
 
         # Identifier of self
-        self.id = nodeid
+        self.__id = nodeid
         # List of identifiers corresponding to neighbors within graph
         self.__Neighbors = []
         # Dictionary of messages from neighbors accessed with their identifiers
@@ -41,23 +41,8 @@ class GenericNode:
     def id(self):
         return self.__id
 
-    @id.getter
-    def id(self):
-        return self.__id
-
-    @id.setter
-    def id(self, nodeid):
-        self.__id = nodeid
-
     @property
     def neighbors(self):
-        return self.__Neighbors
-
-    @neighbors.getter
-    def neighbors(self):
-        """
-        Retrieve node identifiers contained in list of neighbors.
-        """
         return self.__Neighbors
 
     def addneighbor(self, neighborid, message=None):
@@ -135,6 +120,11 @@ class VariableNode(GenericNode):
         # Initialize messages from (trivial) check node 0 to uninformative measure (all ones)
         self.addneighbor(0, message=np.ones(self.__MessageLength, dtype=float))
 
+    @property
+    def neighbors(self):
+        # Exclude trivial check node 0 associated with local observation from list of neighbors
+        return [neighbor for neighbor in super().neighbors if neighbor != 0]
+
     def reset(self):
         """
         Reset every state of variable node to uninformative measures (all ones).
@@ -144,12 +134,6 @@ class VariableNode(GenericNode):
         for neighborid in super().neighbors:
             self.setstate(neighborid, np.ones(self.__MessageLength, dtype=float))
         # self.setobservation(self, np.ones(self.__MessageLength, dtype=float))
-
-    def getneighbors(self):
-        """
-        Retrieve node identifiers contained in list of neighbors.
-        """
-        return [neighbor for neighbor in super().neighbors if neighbor != 0]
 
     def getobservation(self):
         """
@@ -249,11 +233,8 @@ class CheckNodeFFT(GenericNode):
         """
         uninformative = np.fft.rfft(np.ones(self.__MessageLength, dtype=float))
         # The length of np.fft.rfft is NOT self.__MessageLength.
-        for neighborid in self.getneighbors():
+        for neighborid in self.neighbors:
             self.setstate(neighborid, uninformative)
-
-    def getneighbors(self):
-        return self.neighbors
 
     def setmessagefromvar(self, varneighborid, message):
         """
@@ -322,12 +303,10 @@ class CheckNodeFWHT(GenericNode):
         Reset every states check node to uninformative measures (FWHT of all ones)
         """
         uninformative = np.ones(self.__MessageLength, dtype=float)
-        ffht.fht(uninformative) # @method fht acts in place on @type float
-        for neighborid in self.getneighbors():
+        # @method fht acts in place on np.array of @type float
+        ffht.fht(uninformative)
+        for neighborid in self.neighbors:
             self.setstate(neighborid, uninformative)
-
-    def getneighbors(self):
-        return self.neighbors
 
     def setmessagefromvar(self, varneighborid, message):
         """
@@ -336,7 +315,8 @@ class CheckNodeFWHT(GenericNode):
         :param message: Incoming belief vector
         """
         message = message.astype(float)
-        ffht.fht(message) # @method fht acts in place on @type float
+        # @method fht acts in place on np.array of @type float
+        ffht.fht(message)
         self.setstate(varneighborid, message)
 
     def getmessagetovar(self, varneighborid):
@@ -369,7 +349,8 @@ class CheckNodeFWHT(GenericNode):
                 raise RuntimeError('states.ndim = ' + str(np.array(states).ndim) + ' is not allowed.')
             outgoing = outgoing_fwht.astype(float)
             # Inversse of FWHT is, again, FWHT
-            ffht.fht(outgoing) # @method fht acts in place on @type float
+            # @method fht acts in place on np.array of @type float
+            ffht.fht(outgoing)
         # The outgoing message values should be indexed using the minus operation.
         # This is unnecessary over this particular field, since the minus is itself.
         return outgoing
@@ -389,41 +370,70 @@ class BipartiteGraph:
         :param seclength: Length of incoming and outgoing messages
         """
         # Number of bits per section.
-        self.__SecLength = seclength
+        self.__seclength = seclength
         # Length of index vector for every section.
-        self.__SparseSecLength = 2 ** self.__SecLength
+        self.__sparseseclength = 2 ** self.seclength
 
-        # List of unique identifiers for check nodes in bipartite graph.
-        # Identifier @var checknodeid=0 is reserved for the local observation at every variable node.
-        self.__CheckNodeIDs = set()
         # Dictionary of identifiers and nodes for check nodes in bipartite graph.
         self.__CheckNodes = dict()
-
-        # List of unique identifiers for variable nodes in bipartite graph.
-        self.__VarNodeIDs = set()
         # Dictionary of identifiers and nodes for variable nodes in bipartite graph.
         self.__VarNodes = dict()
 
         # Check identifier @var checknodeid=0 is reserved for the local observation at every variable node.
         for idx in range(len(check2varedges)):
             # Create check node identifier, starting at @var checknodeid = 1.
+            # Identifier @var checknodeid = 0 is reserved for the local observation at every variable node.
             checknodeid = idx + 1
-            self.__CheckNodeIDs.add(checknodeid)
             # Create check nodes and add them to dictionary @var self.__CheckNodes.
-            self.__CheckNodes.update({checknodeid: CheckNodeFWHT(checknodeid, messagelength=self.__SparseSecLength)})
+            self.__CheckNodes.update({checknodeid: CheckNodeFWHT(checknodeid, messagelength=self.sparseseclength)})
             # Add edges from check nodes to variable nodes.
             self.__CheckNodes[checknodeid].addneighbors(check2varedges[idx])
-            # Create set of all variable node identifiers.
-            self.__VarNodeIDs.update(check2varedges[idx])
-
-        for varnodeid in self.__VarNodeIDs:
-            # Create variable nodes and add them to dictionary @var self.__VariableNodes.
-            self.__VarNodes[varnodeid] = VariableNode(varnodeid, messagelength=self.__SparseSecLength)
-
-        for checknode in self.__CheckNodes.values():
-            for neighbor in checknode.getneighbors():
+            # Create variable nodes and add them to dictionary @var self.__VarNodes.
+            for varnodeid in check2varedges[idx]:
+                if varnodeid not in self.__VarNodes:
+                    self.__VarNodes[varnodeid] = VariableNode(varnodeid, messagelength=self.sparseseclength)
+                else:
+                    pass
                 # Add edges from variable nodes to check nodes.
-                self.__VarNodes[neighbor].addneighbor(checknode.id)
+                self.__VarNodes[varnodeid].addneighbor(checknodeid)
+
+    @property
+    def seclength(self):
+        return self.__seclength
+
+    @property
+    def sparseseclength(self):
+        return self.__sparseseclength
+
+    @property
+    def checklist(self):
+        return list(self.__CheckNodes.keys())
+
+    @property
+    def checkcount(self):
+        return len(self.checklist)
+
+    def getchecknode(self, checknodeid):
+        if checknodeid in self.checklist:
+            return self.__CheckNodes[checknodeid]
+        else:
+            print('The retrival did not succeed.')
+            print('Check node ID' + str(checknodeid))
+
+    @property
+    def varlist(self):
+        return sorted(list(self.__VarNodes.keys()))
+
+    @property
+    def varcount(self):
+        return len(self.varlist)
+
+    def getvarnode(self, varnodeid):
+        if varnodeid in self.varlist:
+            return self.__VarNodes[varnodeid]
+        else:
+            print('The retrival did not succeed.')
+            print('Check node ID' + str(varnodeid))
 
     def reset(self):
         # Reset states at variable nodes to uniform measures.
@@ -433,41 +443,9 @@ class BipartiteGraph:
         for checknode in self.__CheckNodes.values():
             checknode.reset()
 
-    def getchecklist(self):
-        return list(self.__CheckNodes.keys())
-
-    @property
-    def checkcount(self):
-        return self.__id
-
-    @checkcount.getter
-    def checkcount(self):
-        return len(self.__CheckNodes)
-
-    def getcheckcount(self):
-        return len(self.__CheckNodes)
-
-    def getvarlist(self):
-        return sorted(list(self.__VarNodes.keys()))
-
-    def getvarcount(self):
-        return len(self.__VarNodes)
-
-    def getseclength(self):
-        return self.__SecLength
-
-    def getsparseseclength(self):
-        return self.__SparseSecLength
-
-    def getvarneighbors(self, varnodeid):
-        return self.__VarNodes[varnodeid].getneighbors()
-
-    def getcheckneighbors(self, checknodeid):
-        return self.__CheckNodes[checknodeid].getneighbors()
-
     def getobservation(self, varnodeid):
-        if varnodeid in self.getvarlist():
-            return self.__VarNodes[varnodeid].getobservation()
+        if varnodeid in self.varlist:
+            return self.getvarnode(varnodeid).getobservation()
         else:
             print('The retrival did not succeed.')
             print('Variable Node ID: ' + str(varnodeid))
@@ -478,38 +456,22 @@ class BipartiteGraph:
         Belief vectors are sorted according to @var varnodeid.
         :return: Array of local observations from all variable nodes
         """
-        observations = np.empty((self.getvarcount(), self.getsparseseclength()), dtype=float)
+        observations = np.empty((self.varcount, self.sparseseclength), dtype=float)
         idx = 0
-        for varnodeid in self.getvarlist():
-            observations[idx] = self.__VarNodes[varnodeid].getobservation()
+        for varnodeid in self.varlist:
+            observations[idx] = self.getvarnode(varnodeid).getobservation()
             idx = idx + 1
         return observations
 
     def setobservation(self, varnodeid, measure):
-        if (len(measure) == self.getsparseseclength()) and (varnodeid in self.getvarlist()):
-            self.__VarNodes[varnodeid].setobservation(measure)
+        if (len(measure) == self.sparseseclength) and (varnodeid in self.varlist):
+            self.getvarnode(varnodeid).setobservation(measure)
         else:
             print('The assignment did not succeed.')
             print('Variable Node ID: ' + str(varnodeid))
-            print('Variable Node Indices: ' + str(self.getvarlist()))
+            print('Variable Node Indices: ' + str(self.varlist))
             print('Length Measure: ' + str(len(measure)))
-            print('Length Sparse Section: ' + str(self.__SparseSecLength))
-
-    def printgraph(self):
-        for varnodeid in self.getvarlist():
-            print('Var Node ID ' + str(varnodeid), end=": ")
-            print(self.__VarNodes[varnodeid].getneighbors())
-        for checknodeid in self.getchecklist():
-            print('Check Node ID ' + str(checknodeid), end=": ")
-            print(self.__CheckNodes[checknodeid].getneighbors())
-
-    def printgraphcontent(self):
-        for varnodeid in self.getvarlist():
-            print('Var Node ID ' + str(varnodeid), end=": ")
-            print(self.__VarNodes[varnodeid].getstates())
-        for checknodeid in self.getchecklist():
-            print('Check Node ID ' + str(checknodeid), end=": ")
-            print(self.__CheckNodes[checknodeid].getstates())
+            print('Length Sparse Section: ' + str(self.sparseseclength))
 
     def updatechecks(self, checknodelist=None):
         """
@@ -521,37 +483,29 @@ class BipartiteGraph:
         :return: List of identifiers for variable node contacted during update
         """
         if checknodelist is None:
-            for checknode in self.__CheckNodes.values():
-                varneighborlist = checknode.getneighbors()
-                # print('Updating State of Check ' + str(checknode.id), end=' ')
-                # print('Using Variable Neighbors ' + str(varneighborlist))
-                for varnodeid in varneighborlist:
-                    # print('\t Check Neighbor: ' + str(varnodeid))
-                    # print('\t Others: ' + str([member for member in varneighborlist if member is not varnodeid]))
-                    checknode.setmessagefromvar(varnodeid,
-                                                self.__VarNodes[varnodeid].getmessagetocheck(checknode.id))
-            return
+            checknodelist = self.checklist
+        elif np.isscalar(checknodelist):
+            checknodelist = list([checknodelist])
         else:
-            if np.isscalar(checknodelist):
-                checknodelist = list([checknodelist])
-            varneighborsaggregate = set()
-            for checknodeid in checknodelist:
-                try:
-                    checknode = self.__CheckNodes[checknodeid]
-                except IndexError as e:
-                    print('Check node ID ' + str(checknodeid) + ' is not in ' + str(checknodelist))
-                    print('IndexError: ' + str(e))
-                    break
-                varneighborlist = checknode.getneighbors()
-                varneighborsaggregate.update(varneighborlist)
-                # print('Updating State of Check ' + str(checknode.id), end=' ')
-                # print('Using Variable Neighbors ' + str(varneighborlist))
-                for varnodeid in varneighborlist:
-                    # print('\t Check Neighbor: ' + str(varnodeid))
-                    # print('\t Others: ' + str([member for member in varneighborlist if member is not varnodeid]))
-                    checknode.setmessagefromvar(varnodeid,
-                                                self.__VarNodes[varnodeid].getmessagetocheck(checknode.id))
-            return list(varneighborsaggregate)
+            pass
+        varneighborsaggregate = set()
+        for checknodeid in checknodelist:
+            try:
+                checknode = self.getchecknode(checknodeid)
+            except IndexError as e:
+                print('Check node ID ' + str(checknodeid) + ' is not in ' + str(checknodelist))
+                print('IndexError: ' + str(e))
+                break
+            varneighborlist = checknode.neighbors
+            varneighborsaggregate.update(varneighborlist)
+            # print('Updating State of Check ' + str(checknode.id), end=' ')
+            # print('Using Variable Neighbors ' + str(varneighborlist))
+            for varnodeid in varneighborlist:
+                # print('\t Check Neighbor: ' + str(varnodeid))
+                # print('\t Others: ' + str([member for member in varneighborlist if member is not varnodeid]))
+                checknode.setmessagefromvar(varnodeid,
+                                            self.getvarnode(varnodeid).getmessagetocheck(checknode.id))
+        return list(varneighborsaggregate)
 
     def updatevars(self, varnodelist=None):
         """
@@ -563,47 +517,34 @@ class BipartiteGraph:
         :return: List of identifiers for check node contacted during update
         """
         if varnodelist is None:
-            for varnode in self.__VarNodes.values():
-                checkneighborlist = varnode.getneighbors()
-                # print('Updating State of Variable ' + str(varnode.id), end=' ')
-                # print('Using Check Neighbors ' + str(checkneighborlist))
-                for checknodeid in checkneighborlist:
-                    # print('\t Variable Neighbor: ' + str(neighbor))
-                    # print('\t Others: ' + str([member for member in checkneighborlist if member is not neighbor]))
-                    measure = self.__CheckNodes[checknodeid].getmessagetovar(varnode.id)
-                    weight = np.linalg.norm(measure, ord=1)
-                    if weight != 0:
-                        measure = measure / weight
-                    else:
-                        pass
-                    varnode.setmessagefromcheck(checknodeid, measure)
-            return
+            varnodelist = self.varlist
+        elif np.isscalar(varnodelist):
+            varnodelist = list([varnodelist])
         else:
-            if np.isscalar(varnodelist):
-                varnodelist = list([varnodelist])
-            checkneighborsaggregate = set()
-            for varnodeid in varnodelist:
-                try:
-                    varnode = self.__VarNodes[varnodeid]
-                except IndexError as e:
-                    print('Check node ID ' + str(varnodeid) + ' is not in ' + str(varnodelist))
-                    print('IndexError: ' + str(e))
-                    break
-                checkneighborlist = varnode.getneighbors()
-                checkneighborsaggregate.update(checkneighborlist)
-                # print('Updating State of Variable ' + str(varnode.id), end=' ')
-                # print('Using Check Neighbors ' + str(checkneighborlist))
-                for checknodeid in checkneighborlist:
-                    # print('\t Variable Neighbor: ' + str(neighbor))
-                    # print('\t Others: ' + str([member for member in checkneighborlist if member is not neighbor]))
-                    measure = self.__CheckNodes[checknodeid].getmessagetovar(varnode.id)
-                    weight = np.linalg.norm(measure, ord=1)
-                    if weight != 0:
-                        measure = measure / weight
-                    else:
-                        pass
-                    varnode.setmessagefromcheck(checknodeid, measure)
-            return list(checkneighborsaggregate)
+            pass
+        checkneighborsaggregate = set()
+        for varnodeid in varnodelist:
+            try:
+                varnode = self.getvarnode(varnodeid)
+            except IndexError as e:
+                print('Check node ID ' + str(varnodeid) + ' is not in ' + str(varnodelist))
+                print('IndexError: ' + str(e))
+                break
+            checkneighborsaggregate.update(varnode.neighbors)
+            # print('Updating State of Variable ' + str(varnode.id), end=' ')
+            # print('Using Check Neighbors ' + str(varnode.neighbors))
+            for checknodeid in varnode.neighbors:
+                # print('\t Variable Neighbor: ' + str(neighbor))
+                # print('\t Others: ' + str([member for member in varnode.neighbors if member is not neighbor]))
+                checknode = self.getchecknode(checknodeid)
+                measure = checknode.getmessagetovar(varnode.id)
+                weight = np.linalg.norm(measure, ord=1)
+                if weight != 0:
+                    measure = measure / weight
+                else:
+                    pass
+                varnode.setmessagefromcheck(checknodeid, measure)
+        return list(checkneighborsaggregate)
 
     def getestimate(self, varnodeid):
         """
@@ -611,8 +552,7 @@ class BipartiteGraph:
         :param varnodeid: Identifier of variable node to be queried
         :return: Belief vector from variable node @var varnodeid
         """
-        varnode = self.__VarNodes[varnodeid]
-        return varnode.getestimate()
+        return self.getvarnode(varnodeid).getestimate()
 
     def getestimates(self):
         """
@@ -620,10 +560,10 @@ class BipartiteGraph:
         Belief vectors are sorted according to @var varnodeid.
         :return: Array of belief vectors from all variable nodes
         """
-        estimates = np.empty((self.getvarcount(), self.getsparseseclength()), dtype=float)
+        estimates = np.empty((self.varcount, self.sparseseclength), dtype=float)
         idx = 0
-        for varnodeid in self.getvarlist():
-            estimates[idx] = self.__VarNodes[varnodeid].getestimate()
+        for varnodeid in self.varlist:
+            estimates[idx] = self.getvarnode(varnodeid).getestimate()
             idx = idx + 1
         return estimates
 
@@ -635,7 +575,23 @@ class BipartiteGraph:
         :param varnodeid: Identifier of the variable node to be queried
         :return:
         """
-        return self.__VarNodes[varnodeid].getmessagetocheck(0)
+        return self.getvarnode(varnodeid).getmessagetocheck(0)
+
+    def printgraph(self):
+        for varnodeid in self.varlist:
+            print('Var Node ID ' + str(varnodeid), end=": ")
+            print(self.getvarnode(varnodeid).neighbors)
+        for checknodeid in self.checklist:
+            print('Check Node ID ' + str(checknodeid), end=": ")
+            print(self.getchecknode(checknodeid).neighbors)
+
+    def printgraphcontent(self):
+        for varnodeid in self.varlist:
+            print('Var Node ID ' + str(varnodeid), end=": ")
+            print(self.getvarnode(varnodeid).getstates())
+        for checknodeid in self.checklist:
+            print('Check Node ID ' + str(checknodeid), end=": ")
+            print(self.getchecknode(checknodeid).getstates())
 
 
 class Encoding(BipartiteGraph):
@@ -644,10 +600,10 @@ class Encoding(BipartiteGraph):
         super().__init__(check2varedges, seclength)
 
         paritycheckmatrix = []
-        for checknodeid in self.getchecklist():
-            row = np.zeros(self.getvarcount(), dtype=int)
-            for idx in self.getcheckneighbors(checknodeid):
-                row[idx-1] = 1
+        for checknodeid in self.checklist:
+            row = np.zeros(self.varcount, dtype=int)
+            for idx in self.getchecknode(checknodeid).neighbors:
+                row[idx - 1] = 1
             paritycheckmatrix.append(row)
         paritycheckmatrix = np.array(paritycheckmatrix)
         print('Size of parity check matrix: ' + str(paritycheckmatrix.shape))
@@ -658,29 +614,26 @@ class Encoding(BipartiteGraph):
             print(systematicmatrix)
             self.__paritycolindices = []
             paritynodeindices = []
-            for idx in range(self.getcheckcount()):
+            for idx in range(self.checkcount):
                 # Desirable indices are found in top rows of P_lu.transpose().
                 # Below, columns of P_lu are employed instead of rows of P_lu.transpose().
-                row = systematicmatrix[idx,:]
-                jdx = np.argmax(row==1)
+                row = systematicmatrix[idx, :]
+                jdx = np.argmax(row == 1)
                 self.__paritycolindices.append(jdx)
-                paritynodeindices.append(jdx+1)
+                paritynodeindices.append(jdx + 1)
             self.__paritycolindices = sorted(self.__paritycolindices)
             self.__ParityNodeIndices = sorted(paritynodeindices)
-            self.__ParityCount = len(self.__ParityNodeIndices)
             print('Number of parity column indices: ' + str(len(self.__paritycolindices)))
 
-            self.__infocolindices = sorted([colidx for colidx in range(self.getvarcount()) if colidx not in self.__paritycolindices])
-            infonodeindices = [varnodeid for varnodeid in self.getvarlist() if varnodeid not in paritynodeindices]
+            self.__infocolindices = sorted(
+                [colidx for colidx in range(self.varcount) if colidx not in self.__paritycolindices])
+            infonodeindices = [varnodeid for varnodeid in self.varlist if varnodeid not in paritynodeindices]
             self.__InfoNodeIndices = sorted(infonodeindices)
-            self.__InfoCount = len(self.__InfoNodeIndices)
         else:
             self.__InfoNodeIndices = sorted(infonodeindices)
             self.__infocolindices = [idx - 1 for idx in self.__InfoNodeIndices]
-            self.__InfoCount = len(self.__InfoNodeIndices)
-            self.__ParityNodeIndices = [varnodeid for varnodeid in self.getvarlist() if varnodeid not in infonodeindices]
+            self.__ParityNodeIndices = [varnodeid for varnodeid in self.varlist if varnodeid not in infonodeindices]
             self.__paritycolindices = [idx - 1 for idx in self.__ParityNodeIndices]
-            self.__ParityCount = len(self.__ParityNodeIndices)
 
         print('Number of parity nodes: ' + str(len(set(self.__ParityNodeIndices))))
         self.__pc_parity = paritycheckmatrix[:, self.__paritycolindices]
@@ -692,24 +645,28 @@ class Encoding(BipartiteGraph):
         # print('Rank info component: ' + str(np.linalg.matrix_rank(self.__pc_info)))
         print(self.__pc_info)
 
-    def getinfolist(self):
+    @property
+    def infolist(self):
         return self.__InfoNodeIndices
 
-    def getinfocount(self):
-        return self.__InfoCount
+    @property
+    def infocount(self):
+        return len(self.infolist)
 
-    def getparitylist(self):
+    @property
+    def paritylist(self):
         return self.__ParityNodeIndices
 
-    def getparitycount(self):
-        return self.__ParityCount
+    @property
+    def paritycount(self):
+        return len(self.paritylist)
 
     def eliminationgf2(self, paritycheckmatrix):
         idx = 0
         jdx = 0
-        while (idx < self.getcheckcount()) and (jdx < self.getvarcount()):
-            # find value and index of largest element in remainder of column j
-            while (np.amax(paritycheckmatrix[idx:, jdx]) == 0) and (jdx < (self.getvarcount()-1)):
+        while (idx < self.checkcount) and (jdx < self.varcount):
+            # Find index of largest element in remainder of column @var jdx
+            while (np.amax(paritycheckmatrix[idx:, jdx]) == 0) and (jdx < (self.varcount - 1)):
                 jdx += 1
             kdx = np.argmax(paritycheckmatrix[idx:, jdx]) + idx
 
@@ -720,15 +677,17 @@ class Encoding(BipartiteGraph):
 
             rowidxtrailing = paritycheckmatrix[idx, jdx:]
 
-            coljdx = np.copy(paritycheckmatrix[:, jdx]) #make a copy otherwise M will be directly affected
-            coljdx[idx] = 0 #avoid xoring pivot @var rowidxtrailing with itself
-
+            # Make copy of  column jdx to avoid altering its entries directly.
+            coljdx = np.copy(paritycheckmatrix[:, jdx])
+            # Set entry @var coljdx[idx] to 0 to avoid xoring pivot @var rowidxtrailing with itself
+            coljdx[idx] = 0
+            # Compute binary xor mask using outer product
             entries2flip = np.outer(coljdx, rowidxtrailing)
             # Python xor operator
             paritycheckmatrix[:, jdx:] = paritycheckmatrix[:, jdx:] ^ entries2flip
 
             idx += 1
-            jdx +=1
+            jdx += 1
         return paritycheckmatrix
 
     def getcodeword(self):
@@ -737,10 +696,10 @@ class Encoding(BipartiteGraph):
         Codeword sections are sorted according to @var varnodeid.
         :return: Codeword in sections
         """
-        codeword = np.empty((self.getvarcount(), self.getsparseseclength()), dtype=int)
+        codeword = np.empty((self.varcount, self.sparseseclength), dtype=int)
         idx = 0
-        for varnodeid in self.getvarlist():
-            block = np.zeros(self.getsparseseclength(), dtype=int)
+        for varnodeid in self.varlist:
+            block = np.zeros(self.sparseseclength, dtype=int)
             if np.max(self.getestimate(varnodeid)) > 0:
                 block[np.argmax(self.getestimate(varnodeid))] = 1
             codeword[idx] = block
@@ -752,32 +711,32 @@ class Encoding(BipartiteGraph):
         This method performs encoding based on Gaussian elimination over GF2.
         :param bits: Information bits comprising original message
         """
-        if len(bits) == (self.getinfocount() * self.getseclength()):
-            bits = np.array(bits).reshape((self.getinfocount(), self.getseclength()))
+        if len(bits) == (self.infocount * self.seclength):
+            bits = np.array(bits).reshape((self.infocount, self.seclength))
             # Container for fragmented message bits.
             # Initialize variable nodes within information node indices
-            codewordsparse = np.zeros((self.getvarcount(), self.getsparseseclength()))
-            for idx in range(self.getinfocount()):
+            codewordsparse = np.zeros((self.varcount, self.sparseseclength))
+            for idx in range(self.infocount):
                 # Compute index of fragment @var varnodeid
-                fragment = np.inner(bits[idx], 2 ** np.arange(self.getseclength())[::-1])
+                fragment = np.inner(bits[idx], 2 ** np.arange(self.seclength)[::-1])
                 # Set sparse representation to all zeros, except for proper location.
-                sparsefragment = np.zeros(self.getsparseseclength(), dtype=int)
+                sparsefragment = np.zeros(self.sparseseclength, dtype=int)
                 sparsefragment[fragment] = 1
                 # Add sparse section to codeword.
                 codewordsparse[self.__infocolindices[idx]] = sparsefragment
-            for idx in range(self.getparitycount()):
-                parity = np.remainder(self.__pc_info[idx,:] @ bits, 2)
-                fragment = np.inner(parity, 2 ** np.arange(self.getseclength())[::-1])
+            for idx in range(self.paritycount):
+                parity = np.remainder(self.__pc_info[idx, :] @ bits, 2)
+                fragment = np.inner(parity, 2 ** np.arange(self.seclength)[::-1])
                 # Set sparse representation to all zeros, except for proper location.
-                sparsefragment = np.zeros(self.getsparseseclength(), dtype=int)
+                sparsefragment = np.zeros(self.sparseseclength, dtype=int)
                 sparsefragment[fragment] = 1
                 # Add sparse section to codeword.
                 codewordsparse[self.__paritycolindices[idx]] = sparsefragment
             codeword = np.array(codewordsparse).flatten()
             return codeword
         else:
-            print('Length of input array is not ' + str(self.getinfocount() * self.getseclength()))
-            print('Number of information sections is ' + str(self.getinfocount()))
+            print('Length of input array is not ' + str(self.infocount * self.seclength))
+            print('Number of information sections is ' + str(self.infocount))
 
     def encodemessageBP(self, bits):
         """
@@ -786,8 +745,8 @@ class Encoding(BipartiteGraph):
         parity states are set to all ones.
         :param bits: Information bits comprising original message
         """
-        if len(bits) == (self.getinfocount() * self.getseclength()):
-            bits = np.array(bits).reshape((self.getinfocount(), self.getseclength()))
+        if len(bits) == (self.infocount * self.seclength):
+            bits = np.array(bits).reshape((self.infocount, self.seclength))
             # Container for fragmented message bits.
             bitsections = dict()
             # Reinitialize factor graph to ensure there are no lingering states.
@@ -795,14 +754,14 @@ class Encoding(BipartiteGraph):
             self.reset()
             idx = 0
             # Initialize variable nodes within information node indices
-            for varnodeid in self.getinfolist():
+            for varnodeid in self.infolist:
                 # Message bits corresponding to fragment @var varnodeid.
                 bitsections.update({varnodeid: bits[idx]})
                 idx = idx + 1
                 # Compute index of fragment @var varnodeid
-                fragment = np.inner(bitsections[varnodeid], 2 ** np.arange(self.getseclength())[::-1])
+                fragment = np.inner(bitsections[varnodeid], 2 ** np.arange(self.seclength)[::-1])
                 # Set sparse representation to all zeros, except for proper location.
-                sparsefragment = np.zeros(self.getsparseseclength(), dtype=int)
+                sparsefragment = np.zeros(self.sparseseclength, dtype=int)
                 sparsefragment[fragment] = 1
                 # Set local observation for systematic variable nodes.
                 self.setobservation(varnodeid, sparsefragment)
@@ -810,22 +769,23 @@ class Encoding(BipartiteGraph):
                 # print(' -- Observation changed to: ' + str(np.argmax(self.getobservation(varnodeid))))
 
             # Start with full list of check nodes to update.
-            checknodes2update = set(self.getchecklist())
+            checknodes2update = set(self.checklist)
             self.updatechecks(checknodes2update)
             # Start with list of parity variable nodes to update.
-            varnodes2update = set(self.getvarlist())
+            varnodes2update = set(self.varlist)
             self.updatevars(varnodes2update)
             # The number of parity variable nodes acts as upper bound.
-            for iteration in range(self.getparitycount()):
+            for iteration in range(self.paritycount):
                 checkneighbors = set()
                 varneighbors = set()
 
                 # Update check nodes and check for convergence
                 self.updatechecks(checknodes2update)
                 for checknodeid in checknodes2update:
-                    if set(self.getcheckneighbors(checknodeid)).isdisjoint(varnodes2update):
-                        checknodes2update = checknodes2update - {checknodeid}
-                        varneighbors.update(self.getcheckneighbors(checknodeid))
+                    checknode = self.getchecknode(checknodeid)
+                    if set(checknode.neighbors).isdisjoint(varnodes2update):
+                        checknodes2update = checknodes2update - {checknode.id}
+                        varneighbors.update(checknode.neighbors)
                 if varneighbors != set():
                     self.updatevars(varneighbors)
 
@@ -836,11 +796,11 @@ class Encoding(BipartiteGraph):
                     currentweight1 = np.linalg.norm(currentmeasure, ord=1)
                     if currentweight1 == 1:
                         varnodes2update = varnodes2update - {varnodeid}
-                        checkneighbors.update(self.getvarneighbors(varnodeid))
+                        checkneighbors.update(self.getvarnode(varnodeid).neighbors)
                 if checkneighbors != set():
                     self.updatechecks(checkneighbors)
 
-                if np.array_equal(np.linalg.norm(np.rint(self.getestimates()), ord=0, axis=1), [1] * self.getvarcount()):
+                if np.array_equal(np.linalg.norm(np.rint(self.getestimates()), ord=0, axis=1), [1] * self.varcount):
                     break
 
             self.updatechecks()
@@ -848,8 +808,48 @@ class Encoding(BipartiteGraph):
             codeword = np.rint(self.getestimates()).flatten()
             return codeword
         else:
-            print('Length of input array is not ' + str(self.getinfocount() * self.getseclength()))
+            print('Length of input array is not ' + str(self.infocount * self.seclength))
 
+    def encodemessage2(self, bits):
+        """
+        This method performs systematic encoding..
+        Operations are done modulo @var self.seclength.
+        :param bits: Information bits comprising original message
+        """
+        messagebase10 = []
+        if len(bits) == (self.infocount * self.seclength):
+            bits = np.array(bits).reshape((self.infocount, self.seclength))
+            # Container for fragmented message bits.
+            # Initialize variable nodes within information node indices
+            for idx in range(self.infocount):
+                # Compute index of fragment @var varnodeid
+                fragment = np.inner(bits[idx], 2 ** np.arange(self.seclength)[::-1])
+                messagebase10.append(fragment)
+            print(self.__InfoNodeIndices)
+            print(messagebase10)
+            parityfragments = - (self.__pc_info @ np.array(messagebase10))
+            print(self.__ParityNodeIndices)
+            print(parityfragments)
+            codewordbased10 = np.zeros(self.varcount)
+            for idx in range(self.infocount):
+                codewordbased10[self.__infocolindices[idx]] = messagebase10[idx]
+            for idx in range(self.paritycount):
+                codewordbased10[self.__paritycolindices[idx]] = np.rint(parityfragments[idx])
+
+            codewordsparse = []
+            for idx in range(self.varcount):
+                fragment = (codewordbased10[idx] % self.sparseseclength).astype(int)
+                # Set sparse representation to all zeros, except for proper location.
+                sparsefragment = np.zeros(self.sparseseclength, dtype=int)
+                sparsefragment[fragment] = 1
+                # Add sparse section to codeword.
+                codewordsparse.append(sparsefragment)
+
+            codeword = np.array(codewordsparse).flatten()
+            return codeword
+        else:
+            print('Length of input array is not ' + str(self.infocount * self.seclength))
+            print('Number of information sections is ' + str(self.infocount))
 
     def encodemessages(self, infoarray):
         """
@@ -867,22 +867,21 @@ class Encoding(BipartiteGraph):
         This method encodes multiple messages into a signal
         :param infoarray: array of binary messages to be encoded
         """
-        signal = np.array([np.zeros(self.getsparseseclength(), dtype=float) for l in range(self.getvarcount())]).flatten()
+        signal = np.zeros(self.sparseseclength * self.varcount, dtype=float)
         for messageindex in range(len(infoarray)):
             signal = signal + self.encodemessage(infoarray[messageindex])
         return signal
 
-    # The @method testvalid needs attention; it may not be necessary
     def testvalid(self, codeword):  # ISSUE IN USING THIS FOR NOISY CODEWORDS, INPUT SHOULD BE MEASURE
         # Reinitialize factor graph to ensure there are no lingering states.
         # Node states are set to uninformative measures.
         self.reset()
-        if (len(codeword) == (self.getvarcount() * self.getsparseseclength())) and (
-                np.linalg.norm(codeword, ord=0) == self.getvarcount()):
-            sparsesections = codeword.reshape((self.getvarcount(), self.getsparseseclength()))
+        if (len(codeword) == (self.varcount * self.sparseseclength)) and (
+                np.linalg.norm(codeword, ord=0) == self.varcount):
+            sparsesections = codeword.reshape((self.varcount, self.sparseseclength))
             # Container for fragmented message bits.
             idx = 0
-            for varnodeid in self.getvarlist():
+            for varnodeid in self.varlist:
                 # Sparse section corresponding to @var varnodeid.
                 self.setobservation(varnodeid, sparsesections[idx])
                 idx = idx + 1
