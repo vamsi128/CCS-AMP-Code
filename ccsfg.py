@@ -615,7 +615,7 @@ class BipartiteGraph:
         # hardestimates = np.zeros(stateestimates.shape)
         # idx: int
         # for idx in range(self.varcount):
-        #     trailingtopindices = np.argpartition(stateestimates[idx], -64)[-64:]
+        #     trailingtopindices = np.argpartition(stateestimates[idx], -256)[-256:]
         #     # Retain values corresponding to top indices and zero out other entries.
         #     # Set most likely locations to one.
         #     for topidx in trailingtopindices:
@@ -699,33 +699,38 @@ class BipartiteGraph:
                     self.updatevars(varneighbors)
                 # print('Check nodes to update: ' + str(checknodes2update))
 
-                # Monitor progress and trim section, if necessary
+                # Monitor progress and break, if appropriate
                 newsectionweights0 = np.linalg.norm(self.getestimates(), ord=0, axis=1)
-                # maxsectionlength = 1 + np.ceil(1024 * (self.maxdepth - iteration - 1)/self.maxdepth).astype(int)
-                maxsectionlength = np.ceil(
-                    2 ** ((np.log2(128) / self.maxdepth) * (self.maxdepth - iteration - 1))).astype(int)
                 if np.amin(newsectionweights0) == 0 or len(varnodes2update) == 0:
                     break
-                # elif np.array_equal(sectionweights0, newsectionweights0):
-                elif np.amax(newsectionweights0) > maxsectionlength:
-                    # print('trimming')
-                    for varnodeid in varnodes2update:
-                        currentmeasure = self.getestimate(varnodeid)
-                        currentweight0 = np.linalg.norm(currentmeasure, ord=0).astype(int)
-                        if currentweight0 > maxsectionlength:
-                            supportsize = maxsectionlength
-                            # Function np.argpartition puts indices of top arguments at the end (unordered).
-                            # Variable @var trailingtopindices holds these arguments.
-                            currentobservation = self.getobservation(varnodeid)
-                            trimmedtopindices = np.argpartition(currentmeasure, -supportsize)[-supportsize:]
-                            # Retain values corresponding to top indices and zero out other entries.
-                            trimmedobservation = np.zeros(self.sparseseclength)
-                            for trimmedidx in trimmedtopindices:
-                                trimmedobservation[trimmedidx] = currentobservation[trimmedidx]
-                                self.setobservation(varnodeid, trimmedobservation)
-                            self.updatechecks(self.getvarnode(varnodeid).neighbors)
-                        else:
-                            pass
+                else:
+                    pass
+
+                # # maxsectionlength = 1 + np.ceil(1024 * (self.maxdepth - iteration - 1)/self.maxdepth).astype(int)
+                # maxsectionlength = np.ceil(
+                #     2 ** ((np.log2(128) / self.maxdepth) * (self.maxdepth - iteration - 1))).astype(int)
+                # if np.amin(newsectionweights0) == 0 or len(varnodes2update) == 0:
+                #     break
+                # # elif np.array_equal(sectionweights0, newsectionweights0):
+                # elif np.amax(newsectionweights0) > maxsectionlength:
+                #     print('trimming')
+                #     for varnodeid in varnodes2update:
+                #         currentmeasure = self.getestimate(varnodeid)
+                #         currentweight0 = np.linalg.norm(currentmeasure, ord=0).astype(int)
+                #         if currentweight0 > maxsectionlength:
+                #             supportsize = maxsectionlength
+                #             # Function np.argpartition puts indices of top arguments at the end (unordered).
+                #             # Variable @var trailingtopindices holds these arguments.
+                #             currentobservation = self.getobservation(varnodeid)
+                #             trimmedtopindices = np.argpartition(currentmeasure, -supportsize)[-supportsize:]
+                #             # Retain values corresponding to top indices and zero out other entries.
+                #             trimmedobservation = np.zeros(self.sparseseclength)
+                #             for trimmedidx in trimmedtopindices:
+                #                 trimmedobservation[trimmedidx] = currentobservation[trimmedidx]
+                #                 self.setobservation(varnodeid, trimmedobservation)
+                #             self.updatechecks(self.getvarnode(varnodeid).neighbors)
+                #         else:
+                #             pass
                 # print('Weights ' + str(newsectionweights0))
 
             decoded = self.getcodeword().flatten()
