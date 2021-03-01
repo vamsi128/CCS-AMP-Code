@@ -251,6 +251,23 @@ class Triadic16(ccsfg.Encoding):
         super().__init__(self.__Check2VarEdges, [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31], seclength)
         self.maxdepth = 16
 
+class Disco3(ccsfg.Encoding):
+    def __init__(self, seclength=16):
+        self.__Check2VarEdges = []
+        self.__Check2VarEdges.append([1, 3, 12])
+        self.__Check2VarEdges.append([1, 4, 13])
+        self.__Check2VarEdges.append([1, 5, 14])
+        self.__Check2VarEdges.append([3, 6, 15])
+        self.__Check2VarEdges.append([4, 7, 16])
+        self.__Check2VarEdges.append([5, 8, 17])
+        self.__Check2VarEdges.append([6, 9, 18])
+        self.__Check2VarEdges.append([7, 10, 19])
+        self.__Check2VarEdges.append([8, 11, 20])
+        self.__Check2VarEdges.append([9, 2, 21])
+        self.__Check2VarEdges.append([10, 2, 22])
+        self.__Check2VarEdges.append([11, 2, 23])
+        super().__init__(self.__Check2VarEdges, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], seclength)
+        self.maxdepth = 8
 
 class CCSDS_ldpc_n32_k16(ccsfg.Encoding):
     def __init__(self, seclength=8):
