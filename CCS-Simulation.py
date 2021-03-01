@@ -3,14 +3,17 @@ import FactorGraphGeneration as FG
 import ccsinnercode as ccsic
 import numpy as np
 
+# Initialize CCS-AMP Graph
+Graph = FG.Graph8(16)
+
 # Simulation Parameters
-Ka = 25                 # Number of active users
-w = 128                 # Payload size of each active user (per user message length)
-N = 38400               # Total number of channel uses (real d.o.f)
-L = 16                  # Number of sections/sub-blocks
-vl = 16                 # Length of each coded sub-block
-ml = 2**vl              # Length of each section of m
-listSize = Ka+10        # List size retained for each section after AMP converges
+Ka = 25                        # Number of active users
+w = 128                        # Payload size of each active user (per user message length)
+N = 38400                      # Total number of channel uses (real d.o.f)
+L = Graph.varcount             # Number of sections/sub-blocks
+vl = Graph.seclength           # Length of each coded sub-block
+ml = Graph.sparseseclength     # Length of each section of m
+listSize = Ka+10               # List size retained for each section after AMP converges
 
 numAmpIter = 6          # Number of AMP iterations
 numBPIter = 1           # Number of BP iterations to perform
@@ -22,9 +25,6 @@ P = 2*w*EbNo/N          # transmit power
 std = 1                 # Noise standard deviation
 Phat = N*P/L            # Power estimate
 errorRate = 0.0         # track error rate across simulations
-
-# Initialize CCS-AMP Graph
-Graph = FG.Graph8()
 
 # Run CCS-AMP maxSims times
 for idxsim in range(maxSims):
