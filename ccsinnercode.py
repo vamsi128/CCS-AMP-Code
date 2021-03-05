@@ -185,7 +185,7 @@ class DenseInnerCode(GenericInnerCode):
         super().__init__(N, P, std, Ka, Graph)
 
         # Create dense sensing matrix A
-        self.SparcCodebook(self.__L, self.__ml, N)
+        self.SparcCodebook(self.getL(), self.getML(), N)
 
     def Encode(self, x):
         """
@@ -240,11 +240,11 @@ class BlockDiagonalInnerCode(GenericInnerCode):
         super().__init__(N, P, std, Ka, Graph)
 
         # Determine number of rows per block in A
-        assert N % self.__L == 0, "N must be a multiple of L"
-        self.__numBlockRows = N // self.__L
+        assert N % self.getL() == 0, "N must be a multiple of L"
+        self.__numBlockRows = N // self.getL()
 
         # Create block of A
-        self.SparcCodebook(1, self.__ml, self.__numBlockRows)
+        self.SparcCodebook(1, self.getML(), self.__numBlockRows)
 
     def Encode(self, x):
         """
@@ -254,11 +254,11 @@ class BlockDiagonalInnerCode(GenericInnerCode):
         """
 
         # instantiate data structure for y
-        y = np.zeros(self.__N)
+        y = np.zeros(self.getN())
 
         # encode each section individually
-        for i in range(self.__L):
-            y[i*self.__numBlockRows:(i+1)*self.__numBlockRows] = self.EncodeSection(x[i*self.__ml:(i+1)*self.__ml]).flatten()
+        for i in range(self.getL()):
+            y[i*self.__numBlockRows:(i+1)*self.__numBlockRows] = self.EncodeSection(x[i*self.getML():(i+1)*self.getML()]).flatten()
 
         # return encoded signal y
         return y.reshape(-1, 1)
@@ -273,19 +273,19 @@ class BlockDiagonalInnerCode(GenericInnerCode):
         :param graph: graphical structure of outer code.  Default = None
         """
 
-        xHt = np.zeros((self.__L*self.__ml, 1))       # data structure to store support of x
-        s = np.zeros((self.__L*self.__ml, 1))         # data structure to store effective observations
+        xHt = np.zeros((self.getL()*self.getML(), 1)) # data structure to store support of x
+        s = np.zeros((self.getL()*self.getML(), 1))   # data structure to store effective observations
         z = y.copy()                                  # deep copy of y for AMP to modify
-        tau = np.zeros((self.__L, 1))                 # data structure to store noise standard deviations
+        tau = np.zeros((self.getL(), 1))              # data structure to store noise standard deviations
         tauEvolution = np.zeros((numAmpIter, 1))      # track how tau changes with each iteration
         n = self.__numBlockRows                       # use n as an alias for self.__numBlockRows
-        m = self.__ml                                 # length of each section
+        m = self.getML()                              # length of each section
 
         # Perform numAmpIter iterations of AMP
         for t in range(numAmpIter):
 
             # Iterate through each of the L sections
-            for i in range(self.__L):
+            for i in range(self.getL()):
                 tau[i] = self.NoiseStdDeviation(z[i*n:(i+1)*n])                                    # compute noise std dev
                 s[i*m:(i+1)*m] = self.EffectiveObservation(xHt[i*m:(i+1)*m], z[i*n:(i+1)*n])       # effective observation
 
@@ -293,7 +293,7 @@ class BlockDiagonalInnerCode(GenericInnerCode):
             q = self.ComputePrior(s, BPonOuterGraph, graph, tau, numBPIter)                        # vector of priors
             
             # Iterate through each of the L sections
-            for i in range(self.__L):
+            for i in range(self.getL()):
                 xHt[i*m:(i+1)*m] = self.AmpDenoiser(q[i*m:(i+1)*m], s[i*m:(i+1)*m], tau[i])        # apply denoiser
                 z[i*n:(i+1)*n] = self.Residual(xHt[i*m:(i+1)*m], y[i*n:(i+1)*n], z[i*n:(i+1)*n], \
                                                tau[i])                                             # compute residual 

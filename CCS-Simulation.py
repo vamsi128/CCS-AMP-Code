@@ -49,7 +49,7 @@ for idxsim in range(maxSims):
     xHt, tau_evolution = InnerCode.Decode(y, numAmpIter, BPonOuterGraph, numBPIter, Graph)
 
     # Outer LDPC Decoder (Message Disambiguation)
-    txMsgHt = Graph.decoder(Graph, xHt, listSize)
+    txMsgHt = Graph.decoder(xHt, listSize)
     
     # Calculate PUPE
     errorRate += (Ka - FG.numbermatches(txMsg, txMsgHt)) / (Ka * maxSims)
