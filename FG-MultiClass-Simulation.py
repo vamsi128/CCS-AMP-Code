@@ -167,7 +167,7 @@ def simulate(EbNodB):
     EbNo = 10**(EbNodB/10)
     P1 = 2*B1*EbNo/n
     P2 = 2*B2*EbNo/n
-    σ_n = 1
+    s_n = 1
 
     # We assume equal power allocation for all the sections. Code has to be modified a little to accomodate non-uniform power allocations
     Phat1 = n*P1/L1
@@ -211,7 +211,7 @@ def simulate(EbNodB):
         x = d1*Ab1(sTrue1) + d2*Ab2(sTrue2)
         
         # Generate random channel noise and thus also received signal y
-        noise = np.random.randn(n, 1) * σ_n
+        noise = np.random.randn(n, 1) * s_n
         y = (x + noise)
 
         z = y.copy()
