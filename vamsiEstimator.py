@@ -158,11 +158,11 @@ def simulate(EbNodB):
     
     # Compute power multiplier for bin identifier bits
     desiredBinIDPowerMultiplier = 5
-    pM = desiredBinIDPowerMultiplier*NUM_BINS*2*B/(2*B*NUM_BINS - (desiredBinIDPowerMultiplier - 1)*NUM_BINS**2)
+    pM = desiredBinIDPowerMultiplier*NUM_BINS*B/(B*NUM_BINS - (desiredBinIDPowerMultiplier - 1)*NUM_BINS**2)
 
     # We assume equal power allocation for all the sections. Code has to be modified a little to accomodate non-uniform power allocations
-    dcs = np.sqrt(n*P*2*B/(pM*NUM_BINS + 2*B)/L)
-    dbid = np.sqrt(n*P*pM*NUM_BINS/(pM*NUM_BINS + 2*B)/NUM_BINS)
+    dcs = np.sqrt(n*P*B/(pM*NUM_BINS + B)/L)
+    dbid = np.sqrt(n*P*pM*NUM_BINS/(pM*NUM_BINS + B)/NUM_BINS)
 
     if np.abs(L*dcs**2 + NUM_BINS*dbid**2 - n*P) > 1e-3:
         raise Exception('Total power constraint not met')
