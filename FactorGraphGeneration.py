@@ -138,8 +138,19 @@ class WIMAX_768_640(ccsfg.Encoding):
         super().__init__(self.__Check2VarEdges, None, seclength)
         self.maxdepth = 7
 
-class Triadic6(ccsfg.Encoding):
+        
+class Triadic4(ccsfg.Encoding):
+    def __init__(self, seclength=1):
+        self.__Check2VarEdges = []
+        self.__Check2VarEdges.append([1, 2, 3])
+        self.__Check2VarEdges.append([3, 4, 5])
+        self.__Check2VarEdges.append([5, 6, 7])
+        self.__Check2VarEdges.append([7, 8, 1])
+        super().__init__(self.__Check2VarEdges, [1, 3, 5, 7], seclength)
+        self.maxdepth = 4  # CHECK
 
+        
+class Triadic6(ccsfg.Encoding):
     def __init__(self, seclength=1):
         self.__Check2VarEdges = []
         self.__Check2VarEdges.append([1, 2, 3])
