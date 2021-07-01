@@ -262,6 +262,7 @@ class Triadic16(ccsfg.Encoding):
         super().__init__(self.__Check2VarEdges, [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31], seclength)
         self.maxdepth = 16
 
+
 class Disco3(ccsfg.Encoding):
     def __init__(self, seclength=16):
         self.__Check2VarEdges = []
@@ -279,6 +280,7 @@ class Disco3(ccsfg.Encoding):
         self.__Check2VarEdges.append([11, 2, 23])
         super().__init__(self.__Check2VarEdges, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], seclength)
         self.maxdepth = 8
+
 
 class CCSDS_ldpc_n32_k16(ccsfg.Encoding):
     def __init__(self, seclength=8):
@@ -567,7 +569,6 @@ class GraphTest(ccsfg.Encoding):
         self.__Check2VarEdges.append([2, 4])
         super().__init__(self.__Check2VarEdges, [1, 2], seclength)
         self.maxdepth = 8  # CHECK
-
 
 
 def displayinfo(graph, binarysequence):
