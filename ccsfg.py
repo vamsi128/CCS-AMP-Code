@@ -8,7 +8,7 @@ import numpy as np
 # The fast Walsh–Hadamard transform (FWHT) is borrowed from FALCONN, a library for similarity search over
 # high-dimensional data.
 # https://github.com/FALCONN-LIB/FFHT
-import ffht
+# import ffht
 
 
 class GenericNode:
@@ -654,7 +654,7 @@ class BipartiteGraph:
             print('Check Node ID ' + str(checknodeid), end=": ")
             print(self.getchecknode(checknodeid).getstates())
 
-    def decoder(self, stateestimates, count):  # NEED ORDER OUTPUT IN LIKELIHOOD MAYBE
+    def decoder(self, stateestimates, count, includelikelihoods=False):  # NEED ORDER OUTPUT IN LIKELIHOOD MAYBE
         """
         This method seeks to disambiguate codewords from node states.
         Gather local state estimates from variables nodes and retain top values in place.
@@ -662,6 +662,7 @@ class BipartiteGraph:
         Perform belief propagation and return `count` likely codewords.
         :param stateestimates: Local estimates from variable nodes.
         :param count: Maximum number of codewords returned.
+        :param includelikelihoods: boolean flag of whether to return likelihoods of decoded words.
         :return: List of likely codewords.
         """
 
@@ -812,7 +813,12 @@ class BipartiteGraph:
             likelihoods.append(np.prod(np.amax(isolatedvalues, axis=1)))
         idxsorted = np.argsort(likelihoods)
         recoveredcodewords = [recoveredcodewords[idx] for idx in idxsorted[::-1]]
-        return recoveredcodewords
+
+        if includelikelihoods:
+            sortedlikelihoods = [likelihoods[idx] for idx in idxsorted[::-1]]
+            return recoveredcodewords, sortedlikelihoods
+        else:
+            return recoveredcodewords
 
 
 class Encoding(BipartiteGraph):
