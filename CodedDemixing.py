@@ -254,7 +254,7 @@ def simulate(Ka, NUM_BINS, EbNodB, GENIE_AIDED, ENFORCE_CRC):
         rxK = dbid * K + np.random.randn(NUM_BINS) * s_n
 
         # Perform LMMSE bin occupancy estimation
-        Kht = estimate_bin_occupancy(Ka, dbid, rxK, K, s_n, GENIE_AIDED)
+        Kht = estimate_bin_occupancy(Ka, dbid, rxK, K, s_n, GENIE_AIDED) if NUM_BINS > 1 else K.copy()
         
         """*******************************************************************
         Step 3: outer/inner message encoding and transmission over AWGN channel

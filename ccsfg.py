@@ -692,7 +692,7 @@ class BipartiteGraph:
         #     hardestimates[idx] = self.getestimate(idx+1)
 
         # Retain most likely values in every section.
-        idx: int
+        # idx: int
         for idx in range(self.varcount):
             # Function np.argpartition puts indices of top arguments at the end (unordered).
             # Variable @var trailingtopindices holds these arguments.
