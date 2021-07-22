@@ -196,14 +196,13 @@ def estimate_bin_occupancy(Ka, dbid, rxK, K, s_n, GENIE_AIDED):
 
     return Kht
 
-def simulate(Ka, NUM_BINS, EbNodB, GENIE_AIDED, ENFORCE_CRC):
+def simulate(Ka, NUM_BINS, EbNodB, GENIE_AIDED):
     """
     Run coded demixing simulation
     :param Ka: total number of users
     :param NUM_BINS: total number of bins
     :param EbNodB: Eb/No in dB
     :param GENIE_AIDED: flag of whether to use genie-aided estimate of K
-    :param ENFORCE_CRC: flag of whether to enforce CRC consistency in recovered codewords
     """
 
     B = 128                             # length of each user's message in bits
@@ -212,6 +211,8 @@ def simulate(Ka, NUM_BINS, EbNodB, GENIE_AIDED, ENFORCE_CRC):
     n = 38400                           # number of channel uses (real dof)
     numAMPIter = 10                     # Number of AMP iterations
     numBPiter = 1                       # Number of BP iterations on outer code
+    numSICIter = 2                      # Number of SIC iterations - WARNING: code must be modified if numSICIter != 2
+    gamma = 0.7                         # Percentage of codewords to recover on the first round of SIC
     simCount = 100                      # number of trials to average over
     errorRate = 0                       # store error rate
     delta = 5                           # constant number of extra codewords to retain
@@ -302,47 +303,56 @@ def simulate(Ka, NUM_BINS, EbNodB, GENIE_AIDED, ENFORCE_CRC):
         # Transmit signal X through AWGN channel
         y = x + np.random.randn(n, 1) * s_n
         
-        """***********************
-        Step 4: Inner AMP decoding
-        ***********************"""
+        """********************************************************
+        Step 4: outer/inner decoding and message recovery using SIC
+        ********************************************************"""
 
-        # Prepare for inner AMP decoding
-        z = y.copy()                                        # initialize AMP residual
-        s = [np.zeros((L*M, 1)) for i in range(NUM_BINS)]   # initialize AMP states
+        # reset number of matches between tx and rx codewords
+        matches = 0
 
-        # AMP Inner decoder
-        for idxampiter in range(numAMPIter):
+        # Run numSICIter iterations of SIC
+        for idxsiciter in range(numSICIter):
+            print('Starting SIC iteration ' + str(idxsiciter))
 
-            # Update the state of each bin individually
-            s = [amp_state_update(z, s[i], P, L, Az[i], Kht[i], numBPiter, OuterCodes[i]) for i in range(NUM_BINS)]
+            """***********************
+            Step 5: Inner AMP decoding
+            ***********************"""
 
-            # compute residual jointly
-            z = amp_residual(y, z, s, dcs, Ab)
+            # Prepare for inner AMP decoding
+            z = y.copy()                                        # initialize AMP residual
+            s = [np.zeros((L*M, 1)) for i in range(NUM_BINS)]   # initialize AMP states
 
-        """*************************
-        Step 5: Outer graph decoding
-        *************************"""
-        
-        # Prepare for outer graph decoding
-        recoveredcodewords = dict()     
+            # AMP Inner decoder
+            for idxampiter in range(numAMPIter):
 
-        # Graph-based outer decoder
-        for idxbin in range(NUM_BINS):
-            if Kht[idxbin] == 0: continue
+                # Update the state of each bin individually
+                s = [amp_state_update(z, s[i], P, L, Az[i], Kht[i], numBPiter, OuterCodes[i]) for i in range(NUM_BINS)]
 
-            # Produce list of recovered codewords with their associated likelihoods
-            recovered, likelihoods = OuterCodes[idxbin].decoder(s[idxbin], int(Kht[idxbin] + delta), includelikelihoods=True)
+                # compute residual jointly
+                z = amp_residual(y, z, s, dcs, Ab)
 
-            # Compute what the first w0 bits should be based on bin number
-            binIDBase2 = np.binary_repr(idxbin)
-            binIDBase2 = binIDBase2 if len(binIDBase2) == w0 else (w0 - len(binIDBase2))*'0' + binIDBase2
-            firstW0bits = np.array([binIDBase2[i] for i in range(len(binIDBase2))]).astype(int)
+            """*************************
+            Step 6: Outer graph decoding
+            *************************"""
+            
+            # Prepare for outer graph decoding
+            recoveredcodewords = dict()     
 
-            # Add recovered codewords to data structure indexed by likelihood with optionally enforced CRC check
-            for idxcdwd in range(len(likelihoods)):
-                if (not ENFORCE_CRC) or (NUM_BINS == 1):
-                    recoveredcodewords[likelihoods[idxcdwd]] = recovered[idxcdwd]
-                else:
+            # Graph-based outer decoder
+            for idxbin in range(NUM_BINS):
+                if Kht[idxbin] == 0: continue
+
+                # Produce list of recovered codewords with their associated likelihoods
+                recovered, likelihoods = OuterCodes[idxbin].decoder(s[idxbin], int(4*Kht[idxbin] + delta), includelikelihoods=True)
+
+                # Compute what the first w0 bits should be based on bin number
+                binIDBase2 = np.binary_repr(idxbin)
+                binIDBase2 = binIDBase2 if len(binIDBase2) == w0 else (w0 - len(binIDBase2))*'0' + binIDBase2
+                firstW0bits = np.array([binIDBase2[i] for i in range(len(binIDBase2))]).astype(int)
+
+                # Enforce CRC consistency and add recovered codewords to data structure indexed by likelihood
+                for idxcdwd in range(len(likelihoods)):
+                    
                     # Extract first part of message from codeword
                     firstinfosection = OuterCodes[idxbin].infolist[0] - 1
                     sparsemsg = recovered[idxcdwd][firstinfosection*M:(firstinfosection+1)*M]
@@ -355,28 +365,45 @@ def simulate(Ka, NUM_BINS, EbNodB, GENIE_AIDED, ENFORCE_CRC):
                     if len(idxnonzerobin) < 16:
                         idxnonzerobin = (16 - len(idxnonzerobin))*'0' + idxnonzerobin
 
-                    # Extract first w0 bits
+                    # Extract first w0 bits and determine bin ID
                     msgfirstW0bits = np.array([idxnonzerobin[i] for i in range(w0)]).astype(int)
 
                     # Enforce CRC consistency
-                    if (msgfirstW0bits==firstW0bits).all():
-                        recoveredcodewords[likelihoods[idxcdwd]] = recovered[idxcdwd]
-            
-        # sort dictionary of recovered codewords in descending order of likelihood
-        sortedcodewordestimates = sorted(recoveredcodewords.items(), key=lambda x: -x[0])[0:Ka]
-        codewordestimates = 0
-        for idxusr in range(len(sortedcodewordestimates)):
-            codewordestimates = np.vstack((codewordestimates, sortedcodewordestimates[idxusr][1])) if not np.isscalar(codewordestimates) else \
-                                sortedcodewordestimates[idxusr][1].copy()
+                    if (msgfirstW0bits==firstW0bits).all() or (NUM_BINS == 1):
+                        recoveredcodewords[likelihoods[idxcdwd]] = np.hstack((recovered[idxcdwd], idxbin))
+                
+            # sort dictionary of recovered codewords in descending order of likelihood
+            sortedcodewordestimates = sorted(recoveredcodewords.items(), key=lambda x: -x[0])
+
+            # recover percentage of codewords based on SIC iteration
+            numCdwds = np.ceil(gamma*Ka).astype(int) if idxsiciter == 0 else (Ka - np.ceil(gamma*Ka).astype(int))
+            sortedcodewordestimates = sortedcodewordestimates[0:numCdwds]
+
+            # remove contribution of recovered users from received signal and prepare for PUPE computation
+            codewordestimates = 0
+            for idxcdwd in range(len(sortedcodewordestimates)):
+
+                # add codeword to numpy array of rx codewords for PUPE computation
+                codewordestimates = np.vstack((
+                                        codewordestimates, sortedcodewordestimates[idxcdwd][1][0:L*M]))  \
+                                        if not np.isscalar(codewordestimates) \
+                                        else sortedcodewordestimates[idxcdwd][1][0:L*M].copy()
+
+                # SIC remove contribution of recovered codeword
+                idxcdwdbin = sortedcodewordestimates[idxcdwd][1][-1].astype(int)        # extract bin index as an integer
+                y = y - dcs*Ab[idxcdwdbin](sortedcodewordestimates[idxcdwd][1][0:L*M])  # remove codeword's contribution to rx signal y
+                Kht[idxcdwdbin] = K[idxcdwdbin] - 1 if K[idxcdwdbin] > 0 else 0         # decrement estimated number of users in codeword's bin
+
+            # Update number of matches
+            matches += FGG.numbermatches(txcodewords, codewordestimates)
+            print(str(matches) + ' matches after SIC iteration ' + str(idxsiciter))
 
         """*****************
-        Step 6: Compute PUPE
+        Step 7: Compute PUPE
         *****************"""
 
         # Compute error rate
-        matches = FGG.numbermatches(txcodewords, codewordestimates)
         errorRate += (Ka - matches) / (Ka * simCount)
-        print(str(matches) + ' matches')
         print('Cumulative Error Rate: ' + str(errorRate*simCount/(simIndex+1)))
 
     return errorRate
@@ -385,24 +412,23 @@ def simulate(Ka, NUM_BINS, EbNodB, GENIE_AIDED, ENFORCE_CRC):
 Ka = 64                             # total number of users
 NUM_BINS = 2                        # number of bins employed in simulation
 GENIE_AIDED = False                 # flag of whether to produce genie-aided bin occupancy estimates
-ENFORCE_CRC = False                 # flag of whether to enforce CRC consistency condition during decoding
 SNRs = [1.6, 1.8, 2.0, 2.2, 2.4]    # EbNo values to simulate
 errorRates = []                     # data structure to store error results
 
 # Run simulation
 for snr in SNRs:
     print('SNR = ' + str(snr))
-    a = simulate(Ka, NUM_BINS, snr, GENIE_AIDED, ENFORCE_CRC)
+    a = simulate(Ka, NUM_BINS, snr, GENIE_AIDED)
 
     print('*****************************************************************************************')
     print('SNR: ' + str(snr) + ' Error rate: ' + str(a))
     print('*****************************************************************************************')
     
-    np.savetxt(str(NUM_BINS)+'_'+str(snr)+'_pupe.txt', np.array([a]))
+    np.savetxt(str(NUM_BINS)+'_'+str(snr)+'_pupe_sic.txt', np.array([a]))
     errorRates.append(a)
 
 # Print and store simulation results
 print('Simulation complete!')
 print(errorRates)
-filename = str(NUM_BINS) + '_bins_pupe_vs_snr.txt'
+filename = str(NUM_BINS) + '_final_pupe_sic.txt'
 np.savetxt(filename, errorRates)

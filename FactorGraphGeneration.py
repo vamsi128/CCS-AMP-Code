@@ -179,6 +179,22 @@ class Triadic8(ccsfg.Encoding):
         self.maxdepth = 8
 
 
+class vestigialCCS(ccsfg.Encoding):
+    def __init__(self, seclength=1):
+        self.__Check2VarEdges = []
+        self.__Check2VarEdges.append([1, 2, 3])
+        self.__Check2VarEdges.append([4, 5, 6])
+        self.__Check2VarEdges.append([7, 8, 9])
+        self.__Check2VarEdges.append([10, 11, 12])
+        self.__Check2VarEdges.append([1, 13, 7])
+        self.__Check2VarEdges.append([2, 15, 11, 5])
+        self.__Check2VarEdges.append([4, 14, 10])
+        self.__Check2VarEdges.append([8, 16, 11])
+        self.__SystematicVars = [1, 2, 4, 5, 7, 8, 10, 11]
+        super().__init__(self.__Check2VarEdges, self.__SystematicVars, seclength)
+        self.maxdepth = 8
+
+
 class Triadic10(ccsfg.Encoding):
     def __init__(self, seclength=1):
         self.__Check2VarEdges = []
