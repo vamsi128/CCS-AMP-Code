@@ -358,10 +358,6 @@ class CodedDemixingInnerCode(GenericInnerCode):
             for i in range(numBins)
         ]
 
-        # # Intialize sparc codebooks
-        # for i in range(self.__numBins):
-        #     self.__InnerCodes[i].SparcCodebook(self.__InnerCodes[i].getL(), self.__InnerCodes[i].getML(), N)
-
     def JointAMPResidual(self, y, z, s, tau):
         """
         Jointly compute AMP residual
@@ -382,18 +378,19 @@ class CodedDemixingInnerCode(GenericInnerCode):
 
             # compute estimation error
             if self.__BlockDiagonal:
-                estimationError = np.zeros(y.shape)
                 nbr = self.__InnerCodes[i].getNumBlockRows()
-                curM = self.__InnerCodes[i].getML()
+                M = self.__InnerCodes[i].getML()
+                estimationError = np.zeros(y.shape)
+                onsagerTerm = np.zeros(y.shape)
 
-                for idxl in range(self.__InnerCodes[i].getL()):
-                    y[idxl*nbr:(idxl+1)*nbr] = np.sqrt(P)*self.__InnerCodes[i].Ab(s[i][idxl*curM:(idxl+1)*curM])
+                for j in range(self.__InnerCodes[i].getL()):
+                    estimationError[j*nbr:(j+1)*nbr] = np.sqrt(P)*self.__InnerCodes[i].Ab(s[i][j*M:(j+1)*M])
+                    onsagerTerm[j*nbr:(j+1)*nbr] = (z[j*nbr:(j+1)*nbr]/(nbr*tau[j]**2))*(P*(np.sum(s[i][j*M:(j+1)*M]) - np.sum(s[i][j*M:(j+1)*M]**2)))
+
             else:
                 estimationError = np.sqrt(P)*self.__InnerCodes[i].Ab(s[i])
-                
-            # compute onsager correction term
-            N = self.__InnerCodes[i].getNumBlockRows()
-            onsagerTerm = (z/(N*tau**2))*(P*(np.sum(s[i]) - np.sum(s[i]**2)))
+                N = self.__InnerCodes[i].getNumBlockRows()
+                onsagerTerm = (z/(N*tau**2))*(P*(np.sum(s[i]) - np.sum(s[i]**2)))
 
             # adjust z_plus with Onsager correction term + estimate error
             z_plus += (-1*estimationError) + onsagerTerm                      
@@ -433,30 +430,36 @@ class CodedDemixingInnerCode(GenericInnerCode):
 
         # AMP decoding
         for idxampiter in range(numAmpIter):
-            
-            # compute tau - constant across bins 
-            tau = np.sqrt(np.sum(z**2)/len(z))
 
             # Update state estimate of each bin individually
             for i in range(self.__numBins):
                 
                 # compute effective observations
                 if self.__BlockDiagonal:
-                    curL = self.__InnerCodes[i].getL()
-                    curM = self.__InnerCodes[i].getML()
-                    curNBR = self.__InnerCodes[i].getNumBlockRows()
+                    L, M, NBR = self.__InnerCodes[i].getL(), self.__InnerCodes[i].getML(), self.__InnerCodes[i].getNumBlockRows()
+                    tau = np.zeros(L)
 
-                    for idxl in range(curL):
-                        s[i][idxl*curM:(idxl+1)*curM] = self.__InnerCodes[i].EffectiveObservation(s[i][idxl*curM:(idxl+1)*curM], z[idxl*curNBR:(idxl+1)*curNBR])
+                    # block-wise effective observation
+                    for j in range(L):
+                        s[i][j*M:(j+1)*M] = self.__InnerCodes[i].EffectiveObservation(s[i][j*M:(j+1)*M], z[j*NBR:(j+1)*NBR])
+                        tau[j] = np.sqrt(np.sum(z[j*NBR:(j+1)*NBR]**2)/len(z[j*NBR:(j+1)*NBR]))
 
+                    # compute priors
+                    q = 0 if self.__K[i] == 0 else self.__InnerCodes[i].ComputePrior(s[i], BPonOuterGraph, self.__OuterCodes[i], tau, numBPIter).flatten()
+
+                    # block-wise AMP denoiser
+                    for j in range(L):
+                        s[i][j*M:(j+1)*M] = self.__InnerCodes[i].AmpDenoiser(q[j*M:(j+1)*M], s[i][j*M:(j+1)*M], tau[j])
                 else:
+                    # effective observation + compute tau
                     s[i] = self.__InnerCodes[i].EffectiveObservation(s[i], z)
+                    tau = np.sqrt(np.sum(z**2)/len(z))
+                    
+                    # compute priors
+                    q = 0 if self.__K[i] == 0 else self.__InnerCodes[i].ComputePrior(s[i], BPonOuterGraph, self.__OuterCodes[i], tau, numBPIter).flatten()
 
-                # compute priors
-                q = 0 if self.__K[i] == 0 else self.__InnerCodes[i].ComputePrior(s[i], BPonOuterGraph, self.__OuterCodes[i], tau, numBPIter).flatten()
-
-                # apply AMP denoiser
-                s[i] = self.__InnerCodes[i].AmpDenoiser(q, s[i], tau)
+                    # AMP denoiser
+                    s[i] = self.__InnerCodes[i].AmpDenoiser(q, s[i], tau)               
 
             # Compute residual jointly
             z = self.JointAMPResidual(y, z, s, tau)
