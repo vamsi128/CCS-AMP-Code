@@ -2,7 +2,6 @@ from pyfht import block_sub_fht
 import numpy as np
 
 class GenericInnerCode:
-
     """
     Class @class InnerCode creates an encoder/decoder for CCS using AMP with BP
     """
@@ -38,6 +37,12 @@ class GenericInnerCode:
     def getP(self):
         return self.__P
 
+    def getPhat(self):
+        return self.__Phat
+
+    def getNumBlockRows(self):
+        return self.__numBlockRows
+
     def getStd(self):
         return self.__std
 
@@ -67,7 +72,6 @@ class GenericInnerCode:
         Compressed sensing encoding
         :param x: sparse vector to be CS encoded
         """
-
         return np.sqrt(self.__Phat) * self.Ab(x)
 
     def NoiseStdDeviation(self, z):
@@ -322,3 +326,140 @@ class BlockDiagonalInnerCode(GenericInnerCode):
             tauEvolution[t] = tau[0]                           
 
         return xHt, tauEvolution
+
+class CodedDemixingInnerCode(GenericInnerCode):
+    """
+    Class @class CodedDemixingInnerCode creates a CS encoder/decoder that facilitates 
+    multiple classes of users.  
+    """
+
+    def __init__(self, N, P, std, K, numBins, BlockDiagonal, OuterCodes):
+        """
+        Initialize encoder/decoder for CCS inner code
+        :param N: total number of channel uses (real DOF)
+        :param P: transmit power
+        :param std: noise standard deviation
+        :param K: number of active users per bin
+        :param numBins: number of bins/classes employed in simulation
+        :param BlockDiagonal: boolean flag indicates whether to use block diagonal matrices
+        :param OuterCodes: list of outer factor graphs
+        """
+
+        # Store important parameters
+        self.__P = P if not np.isscalar(P) else P*np.ones(numBins)
+        self.__N = N
+        self.__OuterCodes = OuterCodes
+        self.__numBins = numBins
+        self.__BlockDiagonal = BlockDiagonal
+        self.__K = K.copy()
+        self.__InnerCodes = [
+            BlockDiagonalInnerCode(N, self.__P[i], std, K[i], OuterCodes[i]) if BlockDiagonal else 
+            DenseInnerCode(N, self.__P[i], std, K[i], OuterCodes[i])
+            for i in range(numBins)
+        ]
+
+        # # Intialize sparc codebooks
+        # for i in range(self.__numBins):
+        #     self.__InnerCodes[i].SparcCodebook(self.__InnerCodes[i].getL(), self.__InnerCodes[i].getML(), N)
+
+    def JointAMPResidual(self, y, z, s, tau):
+        """
+        Jointly compute AMP residual
+        :param y: original observation
+        :param z: AMP residual from the previous iteration
+        :param s: list of state updates for each bin
+        :param tau: standard deviation of effective observation noise
+        """
+
+        # create deep copy of y
+        z_plus = y.copy()
+
+        # iterate through each bin
+        for i in range(self.__numBins):
+
+            # get power associated with specific class
+            P = self.__InnerCodes[i].getPhat()
+
+            # compute estimation error
+            if self.__BlockDiagonal:
+                estimationError = np.zeros(y.shape)
+                nbr = self.__InnerCodes[i].getNumBlockRows()
+                curM = self.__InnerCodes[i].getML()
+
+                for idxl in range(self.__InnerCodes[i].getL()):
+                    y[idxl*nbr:(idxl+1)*nbr] = np.sqrt(P)*self.__InnerCodes[i].Ab(s[i][idxl*curM:(idxl+1)*curM])
+            else:
+                estimationError = np.sqrt(P)*self.__InnerCodes[i].Ab(s[i])
+                
+            # compute onsager correction term
+            N = self.__InnerCodes[i].getNumBlockRows()
+            onsagerTerm = (z/(N*tau**2))*(P*(np.sum(s[i]) - np.sum(s[i]**2)))
+
+            # adjust z_plus with Onsager correction term + estimate error
+            z_plus += (-1*estimationError) + onsagerTerm                      
+
+        # return joint AMP residual
+        return z_plus
+
+    def Encode(self, signals):
+        """
+        Encode signal using dense sensing matrices. 
+        :param signals: user codewords to encode grouped by bin
+        """
+
+        # add contribution from each class
+        x = 0.0
+        for i in range(self.__numBins):
+            x += self.__InnerCodes[i].Encode(signals[i])
+
+        # return encoded signal
+        return x
+
+    def Decode(self, y, numAmpIter, BPonOuterGraph, numBPIter=1):
+        """
+        AMP for support recovery of x given observation y
+        :param y: observations of x
+        :param numAmpIter: number of iterations of AMP to perform
+        :param BPonOuterGraph: whether BP should be performed on outer graph.  Default = false
+        :param numBPIter: number of BP iterations to be performed.  Default = 1
+        """
+
+        # prepare for AMP decoding
+        z = y.copy()
+        s = [ 
+            np.zeros((self.__InnerCodes[i].getL()*self.__InnerCodes[i].getML(), 1))
+            for i in range(self.__numBins)
+        ]
+
+        # AMP decoding
+        for idxampiter in range(numAmpIter):
+            
+            # compute tau - constant across bins 
+            tau = np.sqrt(np.sum(z**2)/len(z))
+
+            # Update state estimate of each bin individually
+            for i in range(self.__numBins):
+                
+                # compute effective observations
+                if self.__BlockDiagonal:
+                    curL = self.__InnerCodes[i].getL()
+                    curM = self.__InnerCodes[i].getML()
+                    curNBR = self.__InnerCodes[i].getNumBlockRows()
+
+                    for idxl in range(curL):
+                        s[i][idxl*curM:(idxl+1)*curM] = self.__InnerCodes[i].EffectiveObservation(s[i][idxl*curM:(idxl+1)*curM], z[idxl*curNBR:(idxl+1)*curNBR])
+
+                else:
+                    s[i] = self.__InnerCodes[i].EffectiveObservation(s[i], z)
+
+                # compute priors
+                q = 0 if self.__K[i] == 0 else self.__InnerCodes[i].ComputePrior(s[i], BPonOuterGraph, self.__OuterCodes[i], tau, numBPIter).flatten()
+
+                # apply AMP denoiser
+                s[i] = self.__InnerCodes[i].AmpDenoiser(q, s[i], tau)
+
+            # Compute residual jointly
+            z = self.JointAMPResidual(y, z, s, tau)
+
+        # return result
+        return s

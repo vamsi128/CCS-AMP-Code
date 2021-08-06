@@ -205,17 +205,19 @@ def simulate(Ka, NUM_BINS, EbNodB, GENIE_AIDED):
     :param GENIE_AIDED: flag of whether to use genie-aided estimate of K
     """
 
-    B = 128                             # length of each user's message in bits
-    L = 16                              # number of sections 
-    M = 2**L                            # length of each section
-    n = 38400                           # number of channel uses (real dof)
-    numAMPIter = 10                     # Number of AMP iterations
-    numBPiter = 1                       # Number of BP iterations on outer code
-    numSICIter = 2                      # Number of SIC iterations - WARNING: code must be modified if numSICIter != 2
-    gamma = 0.7                         # Percentage of codewords to recover on the first round of SIC
-    simCount = 100                      # number of trials to average over
-    errorRate = 0                       # store error rate
-    delta = 5                           # constant number of extra codewords to retain
+    B = 128                                 # length of each user's message in bits
+    L = 16                                  # number of sections 
+    M = 2**L                                # length of each section
+    n = 38400                               # number of channel uses (real dof)
+    numBPiter = 1                           # Number of BP iterations on outer code
+    numSICIter = 2                          # Number of SIC iterations - WARNING: code must be modified if numSICIter != 2
+    gamma = 0.7 if numSICIter == 2 else 1   # Percentage of codewords to recover on the first round of SIC
+    simCount = 100                          # number of trials to average over
+    errorRate = 0                           # store error rate
+    delta = 5                               # constant number of extra codewords to retain
+
+    # Compute number of AMP iterations
+    numAMPIter = min(max(10, 10 + 3*int((Ka - 50) / 25)), 24)
 
     # Compute signal and noise power parameters
     EbNo = 10**(EbNodB/10)
@@ -224,9 +226,9 @@ def simulate(Ka, NUM_BINS, EbNodB, GENIE_AIDED):
     
     # Assign power to occupancy estimation and data transmission tasks
     pM = 80
-    dcs = np.sqrt(n*P*n/(pM*NUM_BINS + n)/L) if NUM_BINS > 1 else np.sqrt(n*P/L)
-    dbid = np.sqrt(n*P*pM*NUM_BINS/(pM*NUM_BINS + n)/NUM_BINS) if NUM_BINS > 1 else 0
-    assert np.abs(L*dcs**2 + NUM_BINS*dbid**2 - n*P) <= 1e-3, "Total power constraint violated."
+    dcs = np.sqrt(n*P*n/(pM + n)/L) if NUM_BINS > 1 else np.sqrt(n*P/L)
+    dbid = np.sqrt(n*P*pM/(pM + n)) if NUM_BINS > 1 else 0
+    assert np.abs(L*dcs**2 + dbid**2 - n*P) <= 1e-3, "Total power constraint violated."
 
     # run simCount trials
     for simIndex in range(simCount):
@@ -277,7 +279,7 @@ def simulate(Ka, NUM_BINS, EbNodB, GENIE_AIDED):
         for i in range(NUM_BINS):
 
             # Outer encode each message
-            cdwds = OuterCodes[i].encodemessages(messages[i])
+            cdwds = OuterCodes[i].encodemessages(messages[i]) if len(messages[i]) > 0 else [np.zeros(L*M)]
             for cdwd in cdwds:                              # ensure that each codeword is valid
                 OuterCodes[i].testvalid(cdwd)
             codewords.append(cdwds)                         # add encoded messages to list of codewords
