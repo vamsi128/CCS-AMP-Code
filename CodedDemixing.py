@@ -15,18 +15,20 @@ class CodedDemixingSimulation:
     """
 
     # Methods intended to be called externally
-    def __init__(self, OuterCodeType, InnerEncoderType, InnerDecoderType, SensingMatrixType):
+    def __init__(self, OuterCodeType, InnerEncoderType, InnerDecoderType, DenoiserType, SensingMatrixType):
         """
         Initialize node of type @class CodedDemixingSimulation
         :param OuterCodeType: specify between 'TreeCode' and 'LDPCCode'
         :param InnerEncoderType: specify between 'FHT' and other options
         :param InnerDecoderType: specify between 'AMP' and 'ADMM'
+        :param DenoiserType: specify between 'PME' and other options
         :param SensingMatrixType: specify between 'Dense' and 'BlockDiagonal'
         """
 
         self.__OuterCodeType = OuterCodeType
         self.__InnerEncoderType = InnerEncoderType
         self.__InnerDecoderType = InnerDecoderType
+        self.__DenoiserType = DenoiserType
         self.__SensingMatrixType = SensingMatrixType
 
     def setParameters(self, w, n, L, M, numAMPIter, numBPIter, BPonOuterGraph, 
@@ -451,7 +453,7 @@ class CodedDemixingSimulation:
         # return admissible approximation of x
         return xHt
 
-    def pme0(self, q, r, d, tau):
+    def pme(self, q, r, d, tau):
         """
         Posterior mean estimator (PME)
         :param q: prior probability
@@ -463,9 +465,9 @@ class CodedDemixingSimulation:
                 / ( q*np.exp( -(r-d)**2 / (2*(tau**2))) + (1-q)*np.exp( -r**2 / (2*(tau**2))) ) ).astype(float)
         return sHat
 
-    def dynamicDenoiser(self, r, OuterCode, K, tau, dmsg):
+    def computePrior(self, r, OuterCode, K, tau, dmsg):
         """
-        Dynamic AMP denoiser that runs BP on outer factor graph
+        Runs BP on outer factor graph to obtain informative priors
         :param r: AMP residual
         :param OuterCode: factor graph used in outercode
         :param K: number of users in a bin
@@ -484,7 +486,7 @@ class CodedDemixingSimulation:
         # Compute local estimate (lambda) based on effective observation using PME.
         localEstimates = np.zeros(r.shape)
         for idxblock in range(L):
-            localEstimates[idxblock*M:(idxblock+1)*M] = self.pme0(p0, r[idxblock*M:(idxblock+1)*M], dmsg, tau[idxblock])
+            localEstimates[idxblock*M:(idxblock+1)*M] = self.denoiser(p0, r[idxblock*M:(idxblock+1)*M], dmsg, tau[idxblock])
         
         # Reshape local estimate (lambda) into an LxM matrix
         Beta = localEstimates.reshape(L,-1)
@@ -508,6 +510,18 @@ class CodedDemixingSimulation:
             mu[idx*M:(idx+1)*M] = 1 - (1 - self.approximateVector(Beta[idx,:], K).reshape(-1,1))**K
 
         return mu
+
+    def denoiser(self, q, r, d, tau):
+        """
+        Selects the proper denoiser to run as part of AMP
+        :param q: prior probability
+        :param r: effective observation
+        :param d: signal amplitude
+        :param tau: noise standard deviation
+        """
+
+        if self.__DenoiserType == 'PME':
+            return self.pme(q, r, d, tau)
 
     def ampStateUpdate(self, z, s, d, Az, Kht, OuterCode):
         """
@@ -542,15 +556,15 @@ class CodedDemixingSimulation:
                 r[idxblock*M:(idxblock+1)*M] = d*s[idxblock*M:(idxblock+1)*M] + Az(z[idxblock*nbr:(idxblock+1)*nbr])
 
         # Compute priors
-        mu = 0 if Kht == 0 else self.dynamicDenoiser(r, OuterCode, Kht, tau, d)
+        mu = 0 if Kht == 0 else self.computePrior(r, OuterCode, Kht, tau, d)
 
         # Perform AMP denoising
         if self.__SensingMatrixType == 'Dense':
-            s = self.pme0(mu, r, d, tau[0])
+            s = self.denoiser(mu, r, d, tau[0])
 
         elif self.__SensingMatrixType == 'BlockDiagonal':
             for idxblock in range(L):
-                s[idxblock*M:(idxblock+1)*M] = self.pme0(mu[idxblock*M:(idxblock+1)*M], r[idxblock*M:(idxblock+1)*M], d, tau[idxblock])
+                s[idxblock*M:(idxblock+1)*M] = self.denoiser(mu[idxblock*M:(idxblock+1)*M], r[idxblock*M:(idxblock+1)*M], d, tau[idxblock])
 
         # return state update            
         return s
