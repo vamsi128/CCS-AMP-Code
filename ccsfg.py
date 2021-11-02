@@ -670,29 +670,7 @@ class BipartiteGraph:
         stateestimates.resize(self.varcount, self.sparseseclength)
         thresholdedestimates = np.zeros(stateestimates.shape)
 
-        # NOTE: Pruning impossible paths prior to root decoding has minimal impact.
-        # CCS-AMP already encourages paths to be locally consistent.
-        # This step is extraneous and should probably be avoided.
-        # topindices = []
-        # hardestimates = np.zeros(stateestimates.shape)
-        # idx: int
-        # for idx in range(self.varcount):
-        #     trailingtopindices = np.argpartition(stateestimates[idx], -256)[-256:]
-        #     # Retain values corresponding to top indices and zero out other entries.
-        #     # Set most likely locations to one.
-        #     for topidx in trailingtopindices:
-        #         hardestimates[idx, topidx] = 1 if (stateestimates[idx, topidx] != 0) else 0
-        #     self.setobservation(idx+1,hardestimates[idx,:])
-        #
-        # for iteration in range(16):
-        #     self.updatechecks()
-        #     self.updatevars()
-        #
-        # for idx in range(self.varcount):
-        #     hardestimates[idx] = self.getestimate(idx+1)
-
         # Retain most likely values in every section.
-        # idx: int
         for idx in range(self.varcount):
             # Function np.argpartition puts indices of top arguments at the end (unordered).
             # Variable @var trailingtopindices holds these arguments.
@@ -726,8 +704,7 @@ class BipartiteGraph:
             self.updatechecks(checknodes2update)  # Update Check first
             varnodes2update = set(self.varlist)
             self.updatevars(varnodes2update)
-            # Initialize vector of section weights
-            newsectionweights0 = np.linalg.norm(self.getestimates(), ord=0, axis=1)
+
             for iteration in range(self.maxdepth):  # Max depth
                 sectionweights0 = np.linalg.norm(self.getestimates(), ord=0, axis=1)
                 checkneighbors = set()
@@ -768,42 +745,9 @@ class BipartiteGraph:
                 else:
                     pass
 
-                # # maxsectionlength = 1 + np.ceil(1024 * (self.maxdepth - iteration - 1)/self.maxdepth).astype(int)
-                # maxsectionlength = np.ceil(
-                #     2 ** ((np.log2(128) / self.maxdepth) * (self.maxdepth - iteration - 1))).astype(int)
-                # if np.amin(newsectionweights0) == 0 or len(varnodes2update) == 0:
-                #     break
-                # # elif np.array_equal(sectionweights0, newsectionweights0):
-                # elif np.amax(newsectionweights0) > maxsectionlength:
-                #     print('trimming')
-                #     for varnodeid in varnodes2update:
-                #         currentmeasure = self.getestimate(varnodeid)
-                #         currentweight0 = np.linalg.norm(currentmeasure, ord=0).astype(int)
-                #         if currentweight0 > maxsectionlength:
-                #             supportsize = maxsectionlength
-                #             # Function np.argpartition puts indices of top arguments at the end (unordered).
-                #             # Variable @var trailingtopindices holds these arguments.
-                #             currentobservation = self.getobservation(varnodeid)
-                #             trimmedtopindices = np.argpartition(currentmeasure, -supportsize)[-supportsize:]
-                #             # Retain values corresponding to top indices and zero out other entries.
-                #             trimmedobservation = np.zeros(self.sparseseclength)
-                #             for trimmedidx in trimmedtopindices:
-                #                 trimmedobservation[trimmedidx] = currentobservation[trimmedidx]
-                #                 self.setobservation(varnodeid, trimmedobservation)
-                #             self.updatechecks(self.getvarnode(varnodeid).neighbors)
-                #         else:
-                #             pass
-                # print('Weights ' + str(newsectionweights0))
-
             decoded = self.getcodeword().flatten()
-            decodedsum = np.sum(decoded.flatten())
-            if decodedsum == self.varcount:
+            if not np.isscalar(self.testvalid(decoded)):
                 recoveredcodewords.append(decoded)
-            elif decodedsum > self.varcount:  # CHECK: Can be improved later
-                print('Disambiguation failed.')
-                recoveredcodewords.append(decoded)
-            else:
-                pass
 
         # Order candidates
         likelihoods = []
@@ -937,7 +881,7 @@ class Encoding(BipartiteGraph):
         idx = 0
         for varnodeid in self.varlist:
             block = np.zeros(self.sparseseclength, dtype=int)
-            if np.max(self.getestimate(varnodeid)) > 0:
+            if not np.isclose(np.max(self.getestimate(varnodeid)), 0):
                 block[np.argmax(self.getestimate(varnodeid))] = 1
             codeword[idx] = block
             idx = idx + 1
@@ -1090,14 +1034,16 @@ class Encoding(BipartiteGraph):
                 # print('Codeword is consistent.')
                 return self.getcodeword()
             else:
-                print('Codeword has issues.')
-                print(np.sum(self.getobservations(), axis=1))
-                print(np.sum(self.getestimates(), axis=1))
-                print(np.sum(self.getobservations() - self.getestimates(), axis=1))
+                # print('Codeword has issues.')
+                # print(np.sum(self.getobservations(), axis=1))
+                # print(np.sum(self.getestimates(), axis=1))
+                # print(np.sum(self.getobservations() - self.getestimates(), axis=1))
+                return -1
         else:
-            print(np.linalg.norm(np.rint(self.getestimates()).flatten(), ord=0))
-            print(np.linalg.norm(self.getobservations().flatten(), ord=0))
-            print('Codeword has issues.')
+            # print(np.linalg.norm(np.rint(self.getestimates()).flatten(), ord=0))
+            # print(np.linalg.norm(self.getobservations().flatten(), ord=0))
+            # print('Codeword has issues.')
+            return -1
 
 
 def numbermatches(codewords, recoveredcodewords, maxcount=None):
