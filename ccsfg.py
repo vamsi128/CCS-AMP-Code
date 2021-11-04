@@ -340,80 +340,80 @@ class CheckNodeFFT(GenericNode):
         return outgoing
 
 
-class CheckNodeFWHT(GenericNode):
-    """
-    Class @class CheckNodeFWHT creates a single check node within bipartite factor graph.
-    This class relies on fast Walsh-Hadamard transform.
-    """
+# class CheckNodeFWHT(GenericNode):
+#     """
+#     Class @class CheckNodeFWHT creates a single check node within bipartite factor graph.
+#     This class relies on fast Walsh-Hadamard transform.
+#     """
 
-    def __init__(self, checknodeid, messagelength, neighbors=None):
-        """
-        Initialize check node of type @class CheckNodeFWHT.
-        :param checknodeid: Unique identifier for check node
-        :param messagelength: Length of incoming and outgoing messages
-        :param neighbors: Neighbors of node @var checknodeid in bipartite graph
-        """
+#     def __init__(self, checknodeid, messagelength, neighbors=None):
+#         """
+#         Initialize check node of type @class CheckNodeFWHT.
+#         :param checknodeid: Unique identifier for check node
+#         :param messagelength: Length of incoming and outgoing messages
+#         :param neighbors: Neighbors of node @var checknodeid in bipartite graph
+#         """
 
-        super().__init__(checknodeid, neighbors)
-        # Length of messages
-        self.__MessageLength = messagelength
+#         super().__init__(checknodeid, neighbors)
+#         # Length of messages
+#         self.__MessageLength = messagelength
 
-    def reset(self):
-        """
-        Reset every states check node to uninformative measures (FWHT of all ones)
-        """
-        uninformative = np.ones(self.__MessageLength, dtype=float)
-        # @method fht acts in place on np.array of @type float
-        ffht.fht(uninformative)
-        for neighborid in self.neighbors:
-            self.setstate(neighborid, uninformative)
+#     def reset(self):
+#         """
+#         Reset every states check node to uninformative measures (FWHT of all ones)
+#         """
+#         uninformative = np.ones(self.__MessageLength, dtype=float)
+#         # @method fht acts in place on np.array of @type float
+#         ffht.fht(uninformative)
+#         for neighborid in self.neighbors:
+#             self.setstate(neighborid, uninformative)
 
-    def setmessagefromvar(self, varneighborid, message):
-        """
-        Incoming message from variable node neighbor @var vaneighborid to check node self.
-        :param varneighborid: Variable node identifier of origin
-        :param message: Incoming belief vector
-        """
-        message = message.astype(float)
-        # @method fht acts in place on np.array of @type float
-        ffht.fht(message)
-        self.setstate(varneighborid, message)
+#     def setmessagefromvar(self, varneighborid, message):
+#         """
+#         Incoming message from variable node neighbor @var vaneighborid to check node self.
+#         :param varneighborid: Variable node identifier of origin
+#         :param message: Incoming belief vector
+#         """
+#         message = message.astype(float)
+#         # @method fht acts in place on np.array of @type float
+#         ffht.fht(message)
+#         self.setstate(varneighborid, message)
 
-    def getmessagetovar(self, varneighborid):
-        """
-        Outgoing message from check node self to variable node @var varneighbor
-        :param varneighborid: Variable node identifier of destination
-        :return: Outgoing belief vector
-        """
-        dictionary = self.getstates()
-        if varneighborid is None:
-            states = list(dictionary.values())
-        elif varneighborid in dictionary:
-            states = [dictionary[key] for key in dictionary if key is not varneighborid]
-        else:
-            print('Destination variable node ID ' + str(varneighborid) + ' is not a neighbor.')
-            return None
-        if np.isscalar(states):
-            return states
-        else:
-            states = np.array(states)
-            if states.ndim == 1:
-                outgoing_fwht = states
-            elif states.ndim == 2:
-                try:
-                    outgoing_fwht = np.prod(states, axis=0)
-                except ValueError as e:
-                    print(e)
-                    return None
-            else:
-                raise RuntimeError('states.ndim = ' + str(np.array(states).ndim) + ' is not allowed.')
-            outgoing = outgoing_fwht.astype(float)
-            # Inversse of FWHT is, again, FWHT
-            # @method fht acts in place on np.array of @type float
-            ffht.fht(outgoing)
-        # The outgoing message values should be indexed using the minus operation.
-        # This is unnecessary over this particular field, since the minus is itself.
-        return outgoing
+#     def getmessagetovar(self, varneighborid):
+#         """
+#         Outgoing message from check node self to variable node @var varneighbor
+#         :param varneighborid: Variable node identifier of destination
+#         :return: Outgoing belief vector
+#         """
+#         dictionary = self.getstates()
+#         if varneighborid is None:
+#             states = list(dictionary.values())
+#         elif varneighborid in dictionary:
+#             states = [dictionary[key] for key in dictionary if key is not varneighborid]
+#         else:
+#             print('Destination variable node ID ' + str(varneighborid) + ' is not a neighbor.')
+#             return None
+#         if np.isscalar(states):
+#             return states
+#         else:
+#             states = np.array(states)
+#             if states.ndim == 1:
+#                 outgoing_fwht = states
+#             elif states.ndim == 2:
+#                 try:
+#                     outgoing_fwht = np.prod(states, axis=0)
+#                 except ValueError as e:
+#                     print(e)
+#                     return None
+#             else:
+#                 raise RuntimeError('states.ndim = ' + str(np.array(states).ndim) + ' is not allowed.')
+#             outgoing = outgoing_fwht.astype(float)
+#             # Inversse of FWHT is, again, FWHT
+#             # @method fht acts in place on np.array of @type float
+#             ffht.fht(outgoing)
+#         # The outgoing message values should be indexed using the minus operation.
+#         # This is unnecessary over this particular field, since the minus is itself.
+#         return outgoing
 
 
 class BipartiteGraph:
